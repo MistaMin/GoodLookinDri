@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "shell", "hello"]
+resolver = "2"
+
 [package]
 name = "goodlookindri"
 version = "0.1.0"

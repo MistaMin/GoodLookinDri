@@ -68,6 +68,10 @@ goodlookindri::draw::knob(&mut scene, knob_bounds, motion.position, &item, true,
 
 See the [integration guide](docs/INTEGRATION.md).
 
+## Window shell
+
+`goodlookindri-shell` opens a window and replays a `Scene` with a software rasteriser, for tools that are not plugins. It supports Windows 7 to 11 and macOS 10.6.8 to current. See [docs/SHELL.md](docs/SHELL.md). The core crate above stays standard-library only.
+
 ## Dependencies
 
 | Part | Requirements | License |

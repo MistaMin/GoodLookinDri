@@ -1,0 +1,16 @@
+[package]
+name = "goodlookindri-hello"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Hello-window proof for goodlookindri-shell: a panel and four knobs."
+authors = ["Marcos Deida"]
+publish = false
+
+[[bin]]
+name = "gldri-hello"
+path = "src/main.rs"
+
+[dependencies]
+goodlookindri = { path = ".." }
+goodlookindri-shell = { path = "../shell" }

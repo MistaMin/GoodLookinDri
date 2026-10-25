@@ -5,3 +5,18 @@ version = 4
 [[package]]
 name = "goodlookindri"
 version = "0.1.0"
+
+[[package]]
+name = "goodlookindri-hello"
+version = "0.1.0"
+dependencies = [
+ "goodlookindri",
+ "goodlookindri-shell",
+]
+
+[[package]]
+name = "goodlookindri-shell"
+version = "0.1.0"
+dependencies = [
+ "goodlookindri",
+]
