@@ -53,6 +53,7 @@ impl App for Hello {
                 true
             }
             Event::MouseUp { .. } => { self.drag = None; true }
+            Event::MouseWheel { .. } | Event::Key { .. } => false,
             Event::Tick { dt } => {
                 let mut moving = false;
                 for i in 0..4 {

@@ -6,6 +6,7 @@
 
 mod core;
 pub mod text;
+pub mod ui;
 pub mod raster;
 
 #[cfg(target_os = "macos")]
@@ -13,7 +14,7 @@ mod cocoa;
 #[cfg(windows)]
 mod win32;
 
-pub use crate::core::{App, Config, Event};
+pub use crate::core::{App, Config, Event, Key};
 pub use crate::raster::Framebuffer;
 
 /// Opens the window and runs until it closes. Returns the process exit code.

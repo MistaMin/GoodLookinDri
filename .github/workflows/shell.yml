@@ -46,6 +46,8 @@ jobs:
           otool -l target/x86_64-apple-darwin/release/gldri-hello | grep -A4 -E 'LC_BUILD_VERSION|LC_VERSION_MIN'
       - name: Window smoke test
         run: ./dist/gldri-hello --smoke 1500
+      - name: Widgets smoke test
+        run: ./target/x86_64-apple-darwin/release/gldri-widgets --smoke 1500
       - uses: actions/upload-artifact@v4
         with:
           name: gldri-hello-macos-modern
@@ -97,6 +99,8 @@ jobs:
       - run: cargo +nightly build --release -p goodlookindri-hello -Zbuild-std=std,panic_abort --target ${{ matrix.target }}
       - name: Window smoke test
         run: target\${{ matrix.target }}\release\gldri-hello.exe --smoke 1500
+      - name: Widgets smoke test
+        run: target\${{ matrix.target }}\release\gldri-widgets.exe --smoke 1500
       - uses: actions/upload-artifact@v4
         with:
           name: gldri-hello-${{ matrix.target }}

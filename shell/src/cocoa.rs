@@ -5,7 +5,7 @@
 
 #![allow(non_upper_case_globals, clippy::missing_safety_doc)]
 
-use crate::core::{Core, Event};
+use crate::core::{Core, Event, Key};
 use std::ffi::{c_void, CStr};
 use std::os::raw::c_char;
 use std::ptr::null_mut;
@@ -167,6 +167,39 @@ unsafe fn mouse_event(this: Id, event: Id, kind: u8) {
 extern "C" fn mouse_moved(this: Id, _c: Sel, e: Id) { unsafe { mouse_event(this, e, 0) } }
 extern "C" fn mouse_down(this: Id, _c: Sel, e: Id) { unsafe { mouse_event(this, e, 1) } }
 extern "C" fn mouse_up(this: Id, _c: Sel, e: Id) { unsafe { mouse_event(this, e, 2) } }
+/// `scrollWheel:` deltaY is positive when content moves down. The shell's `dy` is the reverse.
+extern "C" fn scroll_wheel(this: Id, _c: Sel, e: Id) {
+    unsafe {
+        let dy = send!(f64, e, b"deltaY\0");
+        let p = send!(CGPoint, e, b"locationInWindow\0");
+        let h = send_rect(this, b"bounds\0").size.h;
+        if let Some(c) = core() {
+            let ev = Event::MouseWheel { x: p.x as f32, y: (h - p.y) as f32, dy: -dy as f32 };
+            if c.event(ev) { send!((), this, b"setNeedsDisplay:\0", i8 = 1); }
+        }
+    }
+}
+
+/// Key codes from HIToolbox/Events.h. Shift is bit 17 of `modifierFlags`.
+extern "C" fn key_down(this: Id, _c: Sel, e: Id) {
+    unsafe {
+        let code = send!(u16, e, b"keyCode\0");
+        let shift = send!(usize, e, b"modifierFlags\0") & (1 << 17) != 0;
+        let key = match code {
+            48 => Key::Tab,
+            36 | 76 => Key::Enter,
+            49 => Key::Space,
+            126 => Key::Up,
+            125 => Key::Down,
+            53 => Key::Escape,
+            _ => return,
+        };
+        if let Some(c) = core() {
+            if c.event(Event::Key { key, shift }) { send!((), this, b"setNeedsDisplay:\0", i8 = 1); }
+        }
+    }
+}
+
 extern "C" fn is_flipped(_this: Id, _c: Sel) -> i8 { 1 }
 extern "C" fn yes_responder(_this: Id, _c: Sel) -> i8 { 1 }
 extern "C" fn terminate_after_last(_this: Id, _c: Sel, _app: Id) -> i8 { 1 }
@@ -196,6 +229,8 @@ unsafe fn make_view_class() -> Class {
     add(b"mouseDragged:\0", mouse_moved as *const c_void, b"v@:@\0");
     add(b"mouseDown:\0", mouse_down as *const c_void, b"v@:@\0");
     add(b"mouseUp:\0", mouse_up as *const c_void, b"v@:@\0");
+    add(b"scrollWheel:\0", scroll_wheel as *const c_void, b"v@:@\0");
+    add(b"keyDown:\0", key_down as *const c_void, b"v@:@\0");
     add(b"tick:\0", tick as *const c_void, b"v@:@\0");
     add(b"windowWillClose:\0", window_will_close as *const c_void, b"v@:@\0");
     add(b"applicationShouldTerminateAfterLastWindowClosed:\0", terminate_after_last as *const c_void, b"c@:@\0");

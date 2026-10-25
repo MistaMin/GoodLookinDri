@@ -6,11 +6,18 @@ use goodlookindri::scene::Scene;
 use std::collections::HashSet;
 use std::time::Instant;
 
+/// Keys the shell reports. Letters and digits are not sent yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Key { Tab, Enter, Space, Up, Down, Escape }
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Event {
     MouseMove { x: f32, y: f32 },
     MouseDown { x: f32, y: f32 },
     MouseUp { x: f32, y: f32 },
+    /// Wheel or trackpad scroll at a point. `dy` is in lines: positive scrolls content up.
+    MouseWheel { x: f32, y: f32, dy: f32 },
+    Key { key: Key, shift: bool },
     /// Sent about every 16 ms. `dt` is seconds since the last tick.
     Tick { dt: f32 },
 }

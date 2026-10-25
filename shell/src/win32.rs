@@ -4,7 +4,7 @@
 
 #![allow(non_snake_case, non_camel_case_types, clippy::upper_case_acronyms)]
 
-use crate::core::{Core, Event};
+use crate::core::{Core, Event, Key};
 use std::ffi::c_void;
 use std::ptr::{null, null_mut};
 
@@ -55,6 +55,9 @@ extern "system" {
     fn SetProcessDPIAware() -> i32;
     fn GetDC(h: HWND) -> HDC;
     fn ReleaseDC(h: HWND, dc: HDC) -> i32;
+    fn ScreenToClient(h: HWND, p: *mut POINT) -> i32;
+    fn SetFocus(h: HWND) -> HWND;
+    fn GetKeyState(vk: i32) -> i16;
 }
 #[link(name = "gdi32")]
 extern "system" {
@@ -71,7 +74,9 @@ const WM_SIZE: u32 = 0x0005;
 const WM_PAINT: u32 = 0x000F;
 const WM_ERASEBKGND: u32 = 0x0014;
 const WM_TIMER: u32 = 0x0113;
+const WM_KEYDOWN: u32 = 0x0100;
 const WM_MOUSEMOVE: u32 = 0x0200;
+const WM_MOUSEWHEEL: u32 = 0x020A;
 const WM_LBUTTONDOWN: u32 = 0x0201;
 const WM_LBUTTONUP: u32 = 0x0202;
 const WS_OVERLAPPEDWINDOW: u32 = 0x00CF_0000;
@@ -150,6 +155,35 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: usize, lparam: 
             }
             return 0;
         }
+        WM_MOUSEWHEEL => {
+            // The wheel reports screen coordinates; WHEEL_DELTA is 120 per notch, positive away from the user.
+            let mut pt = POINT { x: lparam as u32 as u16 as i16 as i32, y: (lparam as u32 >> 16) as u16 as i16 as i32 };
+            ScreenToClient(hwnd, &mut pt);
+            let notches = ((wparam >> 16) as u16 as i16) as f32 / 120.0;
+            let s = SCALE;
+            if let Some(c) = core() {
+                // Shell wheel events are positive when content moves up, the opposite of the wheel.
+                let e = Event::MouseWheel { x: pt.x as f32 / s, y: pt.y as f32 / s, dy: -notches };
+                if c.event(e) { InvalidateRect(hwnd, null(), 0); }
+            }
+            return 0;
+        }
+        WM_KEYDOWN => {
+            let key = match wparam {
+                0x09 => Some(Key::Tab),
+                0x0D => Some(Key::Enter),
+                0x20 => Some(Key::Space),
+                0x26 => Some(Key::Up),
+                0x28 => Some(Key::Down),
+                0x1B => Some(Key::Escape),
+                _ => None,
+            };
+            if let (Some(key), Some(c)) = (key, core()) {
+                let shift = GetKeyState(0x10) < 0;
+                if c.event(Event::Key { key, shift }) { InvalidateRect(hwnd, null(), 0); }
+                return 0;
+            }
+        }
         WM_DESTROY => {
             PostQuitMessage(0);
             return 0;
@@ -195,6 +229,7 @@ pub(crate) fn run(mut core: Core) -> i32 {
         }
         ShowWindow(hwnd, SW_SHOW);
         UpdateWindow(hwnd);
+        SetFocus(hwnd);
         SetTimer(hwnd, TIMER_ID, 16, null());
         let mut msg: MSG = std::mem::zeroed();
         while GetMessageW(&mut msg, null_mut(), 0, 0) > 0 {
