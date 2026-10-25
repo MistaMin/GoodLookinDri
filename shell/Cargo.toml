@@ -7,4 +7,5 @@ description = "Window, software rasteriser and input for GoodLookinDri scenes. W
 authors = ["Marcos Deida"]
 
 [dependencies]
+fontdue = "=0.8.0"
 goodlookindri = { path = ".." }

@@ -4,7 +4,7 @@
 //! one pixel of anti-aliasing with no supersampling. Slow for very large scenes, but it has no
 //! dependencies and no requirement beyond the standard library.
 
-use crate::font;
+use crate::text::{self, Glyph, GlyphCache};
 use goodlookindri::color::Color;
 use goodlookindri::scene::{Cmd, Point, Scene};
 
@@ -13,6 +13,7 @@ pub struct Framebuffer {
     pub width: usize,
     pub height: usize,
     pub pixels: Vec<u32>,
+    glyphs: GlyphCache,
 }
 
 #[derive(Clone, Copy)]
@@ -91,7 +92,7 @@ fn bounds(pts: &[Point]) -> [f32; 4] {
 
 impl Framebuffer {
     pub fn new(width: usize, height: usize) -> Self {
-        Self { width, height, pixels: vec![0; width * height] }
+        Self { width, height, pixels: vec![0; width * height], glyphs: GlyphCache::default() }
     }
 
     pub fn clear(&mut self, c: Color) {
@@ -176,21 +177,15 @@ impl Framebuffer {
                     self.draw(&clips, [bb[0] - hw, bb[1] - hw, bb[2] + hw, bb[3] + hw], |px, py| poly_dist(&pts, false, px, py) - hw, &Fill::Solid(*color));
                 }
                 Cmd::Text { at, text, color, size, center } => {
-                    let cell = (size * s / font::GLYPH_ROWS as f32).max(0.5);
-                    let width = font::width_cells(text) as f32 * cell;
-                    let x0 = if *center { at.x * s - width * 0.5 } else { at.x * s };
-                    let y0 = at.y * s - font::GLYPH_ROWS as f32 * cell * 0.5;
-                    let fill = Fill::Solid(*color);
-                    for (i, ch) in text.chars().enumerate() {
-                        let gx = x0 + (i * (font::GLYPH_W + 1)) as f32 * cell;
-                        for (col, bits) in font::glyph(ch).iter().enumerate() {
-                            for row in 0..font::GLYPH_ROWS {
-                                if bits >> row & 1 == 0 { continue; }
-                                let (bx, by) = (gx + col as f32 * cell, y0 + row as f32 * cell);
-                                let (cx, cy, h) = (bx + cell * 0.5, by + cell * 0.5, cell * 0.5);
-                                self.draw(&clips, [bx, by, bx + cell, by + cell], |px, py| sd_round(px, py, cx, cy, h, h, 0.0), &fill);
-                            }
-                        }
+                    let px = text::quantise(size * s);
+                    let (pens, total) = text::pen_positions(text, px);
+                    let x0 = if *center { at.x * s - total * 0.5 } else { at.x * s };
+                    let baseline = at.y * s + px * text::MIDDLE;
+                    for (c, pen) in pens {
+                        let g = self.glyphs.get(c, px);
+                        let ox = (x0 + pen).round() as i64 + g.left as i64;
+                        let oy = (baseline - g.top as f32).round() as i64;
+                        blit(&mut self.pixels, self.width, self.height, &clips, g, ox, oy, *color);
                     }
                 }
                 Cmd::ClipRound { rect, radius } => {
@@ -210,21 +205,45 @@ impl Framebuffer {
             let py = y as f32 + 0.5;
             for x in x0..x1 {
                 let px = x as f32 + 0.5;
-                let mut cov = (0.5 - dist(px, py)).clamp(0.0, 1.0);
+                let cov = (0.5 - dist(px, py)).clamp(0.0, 1.0) * clip_coverage(clips, px, py);
                 if cov <= 0.0 { continue; }
-                for c in clips {
-                    cov *= (0.5 - sd_round(px, py, c.cx, c.cy, c.hx, c.hy, c.r)).clamp(0.0, 1.0);
-                    if cov <= 0.0 { break; }
-                }
-                if cov <= 0.0 { continue; }
-                let col = fill.at(px, py);
-                let a = col.alpha_f() * cov;
-                if a <= 0.0 { continue; }
-                let dst = &mut self.pixels[y * self.width + x];
-                let mix = |s: u8, d: u32| (d as f32 + (s as f32 - d as f32) * a).round() as u32;
-                let (dr, dg, db) = ((*dst >> 16) & 255, (*dst >> 8) & 255, *dst & 255);
-                *dst = (mix(col.r(), dr) << 16) | (mix(col.g(), dg) << 8) | mix(col.b(), db);
+                blend(&mut self.pixels[y * self.width + x], fill.at(px, py), cov);
             }
+        }
+    }
+}
+
+/// Product of the coverage of every active clip at a point.
+fn clip_coverage(clips: &[Clip], px: f32, py: f32) -> f32 {
+    let mut cov = 1.0;
+    for c in clips {
+        cov *= (0.5 - sd_round(px, py, c.cx, c.cy, c.hx, c.hy, c.r)).clamp(0.0, 1.0);
+        if cov <= 0.0 { break; }
+    }
+    cov
+}
+
+/// Source-over blend of `col` at `cov` into one opaque pixel.
+fn blend(dst: &mut u32, col: Color, cov: f32) {
+    let a = col.alpha_f() * cov;
+    if a <= 0.0 { return; }
+    let mix = |s: u8, d: u32| (d as f32 + (s as f32 - d as f32) * a).round() as u32;
+    let (dr, dg, db) = ((*dst >> 16) & 255, (*dst >> 8) & 255, *dst & 255);
+    *dst = (mix(col.r(), dr) << 16) | (mix(col.g(), dg) << 8) | mix(col.b(), db);
+}
+
+/// Blends one glyph's coverage with its top-left corner at (`ox`, `oy`), skipping pixels off the buffer.
+fn blit(pixels: &mut [u32], width: usize, height: usize, clips: &[Clip], g: &Glyph, ox: i64, oy: i64, col: Color) {
+    for row in 0..g.height {
+        let py = oy + row as i64;
+        if py < 0 || py >= height as i64 { continue; }
+        for column in 0..g.width {
+            let px = ox + column as i64;
+            if px < 0 || px >= width as i64 { continue; }
+            let cov = g.coverage[row * g.width + column] as f32 / 255.0;
+            if cov <= 0.0 { continue; }
+            let cov = cov * clip_coverage(clips, px as f32 + 0.5, py as f32 + 0.5);
+            blend(&mut pixels[py as usize * width + px as usize], col, cov);
         }
     }
 }
