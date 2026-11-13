@@ -1,6 +1,6 @@
 # Dependencies and licensing
 
-GoodLookinDri is MIT licensed, copyright 2026 Marcos Deida. See the root [LICENSE](../LICENSE).
+GoodLookinDri is MIT licensed, copyright 2026 Marcos Quirino Deida. See the root [LICENSE](../LICENSE).
 
 The crate depends only on the Rust standard library. `cargo test` uses the built-in test harness. Nothing is downloaded at build time besides the Rust toolchain you already installed.
 

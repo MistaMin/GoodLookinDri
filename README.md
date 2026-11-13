@@ -114,4 +114,4 @@ Existing CSV designs with the original HardwareUI header still load. Newly saved
 
 ## License
 
-GoodLookinDri source code and documentation are released under the [MIT License](LICENSE), copyright 2026 Marcos Deida.
+GoodLookinDri source code and documentation are released under the [MIT License](LICENSE), copyright 2026 Marcos Quirino Deida.
