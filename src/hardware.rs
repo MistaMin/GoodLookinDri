@@ -870,7 +870,19 @@ fn guess_plate_lum(fill: Color) -> f32 { if fill.perceived_brightness() > 0.6 { 
 
 fn engraved_text(scene: &mut Scene, fill: Color, plate_lum: f32, at: Point, text: &str, size: f32, center: bool) {
     let (dark, light) = engrave_offsets(size);
-    let (ad, al) = engrave_alphas(plate_lum);
+    let (mut ad, mut al) = engrave_alphas(plate_lum);
+    let mut fill = fill;
+    // An unfilled cut (fill close to the plate) is carried by its walls alone. At low device
+    // scales those walls are a single pixel, so give them full contrast and let the floor of
+    // the cut sit a little darker than the plate.
+    let unfilled = (fill.perceived_brightness() - plate_lum).abs() < 0.28;
+    let low = (2.0 - device_scale()).clamp(0.0, 1.0);
+    if unfilled {
+        ad = (ad + 0.12 + 0.25 * low).min(1.0);
+        al = (al + 0.12 + 0.30 * low).min(1.0);
+        fill = fill.darker(0.10 + 0.22 * low);
+        if low > 0.0 { scene.text(at.add(dark.mul(2.0)), text, BLACK.with_alpha(0.30 * low), size, center); }
+    }
     scene.text(at.add(light), text, WHITE.with_alpha(al), size, center);
     scene.text(at.add(dark), text, BLACK.with_alpha(ad), size, center);
     // On a mid-tone plate neither wall has much contrast alone: seat the cut with a soft

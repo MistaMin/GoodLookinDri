@@ -2,16 +2,26 @@
 //! to a PPM. Usage: cargo run -p goodlookindri-shell --example render_hardware -- <out.ppm> [scale] [section]
 
 use goodlookindri::color::Color;
+use goodlookindri::draw::{self, KnobMode};
 use goodlookindri::hardware::*;
 use goodlookindri::light::LightRig;
 use goodlookindri::scene::{Point, Rect, Scene};
 use goodlookindri_shell::raster::Framebuffer;
+
+/// Where a printed scale goes round a lit knob of this style: the centre of its silhouette
+/// (tall knobs lean up the screen under the tilted camera) and a radius just clear of it.
+/// These styles print no scale of their own, so the ring is not doubled.
+fn knob_frame(code: &str, c: Point, r: f32) -> (Point, f32) {
+    let (lift, reach) = goodlookindri::knob3d::style_model(code).map_or((0.0, 1.0), |m| m.visual_frame(&goodlookindri::knob3d::Rig::studio()));
+    (Point::new(c.x, c.y - lift * r), r * reach.max(1.0) * 1.12 + 2.0)
+}
 
 fn main() {
     let a: Vec<String> = std::env::args().collect();
     let out = a.get(1).cloned().unwrap_or_else(|| "hardware.ppm".into());
     let scale: f32 = a.get(2).and_then(|s| s.parse().ok()).unwrap_or(2.0);
     set_device_scale(scale);
+    draw::set_knob_scale(scale);
     let mut sc = Scene::new();
     let rig = LightRig::studio();
 
@@ -46,9 +56,12 @@ fn main() {
     let ink = Color(0xff202426);
     for (k, (labels, minors)) in [(&["-20", "-10", "0", "+10", "+20"][..], 4usize), (&["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"][..], 1), (&["FAST", "SLOW"][..], 0)].iter().enumerate() {
         let c = Point::new(unit.x + 130.0 + k as f32 * 200.0, unit.y + 110.0);
-        sc.fill_ellipse_radial(Scene::ellipse_at(c, 30.0), goodlookindri::scene::Stops::two(Color(0xff3a3d40), Color(0xff121314)), Point::new(c.x - 8.0, c.y - 12.0));
+        let code = ["Knl", "Rck", "Tl"][k];
+        let (rc, rr) = knob_frame(code, c, 30.0);
+        draw::set_knob_floor(Color(0xffd1d5d8));
+        draw::knob_named_mode(&mut sc, code, c, 30.0, ([0.35f32, 0.7, 0.2][k] * 1.6 - 0.8) * std::f32::consts::PI, Color(0xffc0392b), true, KnobMode::Lit);
         let n = if labels.len() == 2 { 7 } else { labels.len() };
-        let mut ring = ScaleRing::new(c, 36.0, n, *minors, labels);
+        let mut ring = ScaleRing::new(rc, rr, n, *minors, labels);
         ring.legend = Legend::Silk(ink);
         if k == 2 { ring.marks = ScaleMarks::Dots; }
         draw_scale_ring_with(&mut sc, &ring);
@@ -64,13 +77,17 @@ fn main() {
     legend_text_on(&mut sc, eng, Color(0xff2a418a), Point::new(dark.x + 30.0, dark.y + 40.0), "MODEL  ONE", 20.0, false);
     legend_text(&mut sc, Legend::Silk(Color(0xffffffff)), Point::new(dark.x + 30.0, dark.y + 70.0), "OPTICAL   COMPRESSOR", 11.0, false);
     let c = Point::new(dark.x + 330.0, dark.y + 130.0);
-    sc.fill_ellipse_radial(Scene::ellipse_at(c, 28.0), goodlookindri::scene::Stops::two(Color(0xff3a3d40), Color(0xff050505)), Point::new(c.x - 8.0, c.y - 12.0));
-    let mut ring = ScaleRing::new(c, 33.0, 5, 0, &["-10", "0", "+10", "+20", "+30"]);
+    draw::set_knob_floor(Color(0xff24387a));
+    let (rc, rr) = knob_frame("Ivr", c, 28.0);
+    draw::knob_named_mode(&mut sc, "Ivr", c, 28.0, 0.25 * std::f32::consts::PI, Color(0xffe8e4d8), false, KnobMode::Lit);
+    let mut ring = ScaleRing::new(rc, rr, 5, 0, &["-10", "0", "+10", "+20", "+30"]);
     ring.marks = ScaleMarks::Dots;
     ring.legend = Legend::Silk(Color(0xffffffff));
     draw_scale_ring_with(&mut sc, &ring);
-    let c = Point::new(dark.x + 150.0, dark.y + 150.0);
-    let mut ring = ScaleRing::new(c, 30.0, 11, 1, &["0", "5", "10"]);
+    let c = Point::new(dark.x + 190.0, dark.y + 160.0);
+    let (rc, rr) = knob_frame("Dbl", c, 22.0);
+    draw::knob_named_mode(&mut sc, "Dbl", c, 22.0, -0.3 * std::f32::consts::PI, Color(0xffe8e4d8), false, KnobMode::Lit);
+    let mut ring = ScaleRing::new(rc, rr.max(30.0), 11, 1, &["0", "5", "10"]);
     ring.legend = eng;
     draw_scale_ring_with(&mut sc, &ring);
     for (i, head) in [ScrewHead::Slot, ScrewHead::Cross, ScrewHead::Hex].iter().enumerate() {

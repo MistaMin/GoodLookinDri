@@ -967,39 +967,44 @@ fn slider_h(scene: &mut Scene, r: Rect, mut prop: f32, st: SliderStyle, c: Color
             cap(scene, box_at(8.0, 20.0, Point::new(x, cy)), 2.0, Color(0xffe6e6e0), lt);
         }
         SliderStyle::Wedge => {
-            let ramp = vec![Point::new(r.x, cy + 7.0), Point::new(r.right(), cy - 11.0), Point::new(r.right(), cy + 7.0)];
-            // A wedge-shaped cut-out: lit lip below and at the tall end, dark floor.
-            let lo = lt.offset(1.1);
-            scene.fill_poly(ramp.iter().map(|p| p.add(lo)).collect(), Color(0x2effffff), Color(0x2effffff));
-            scene.stroke_poly(ramp.clone(), Color(0xe0000000), 2.2, true);
-            scene.fill_poly(ramp.clone(), Color(0xff06090b), Color(0xff06090b));
-            scene.fill_poly(ramp.clone(), c.with_alpha(0.10), c.with_alpha(0.10));
-            let tpos = if r.w.abs() < 1.0e-4 { 0.0 } else { (x - r.x) / r.w };
-            let y_at = cy + 7.0 + tpos * ((cy - 11.0) - (cy + 7.0));
-            let edge = [Point::new(r.x, cy + 7.0), Point::new(x, y_at)];
-            if glow && tpos > 0.0 {
-                bloom_path(scene, &edge, false, c.mix(Color(0xffff4a2a), 0.5), 1.0, 5.0, 0.16 * k);
-                bloom_rect(scene, Rect::new(r.x, cy + 6.0, x - r.x, 1.0), 0.5, c.mix(Color(0xffff4a2a), 0.5), 4.0, 0.12 * k);
+            // A rising ramp of display bars in a recessed window: each lit bar is graded and
+            // blooms, the top of the ramp runs through orange to red, and a hairline follows
+            // the slope the bars climb to.
+            let win = Rect::new(r.x - 6.0, cy - 15.0, r.w + 12.0, 29.0);
+            recess(scene, win, 3.0, Color(0xff0a0d0e).mix(c, 0.035), Color(0xff030405), lt);
+            let n = ((r.w / 7.0) as usize).clamp(10, 56);
+            let pitch = r.w / n as f32;
+            let base = cy + 10.0;
+            let height = |f: f32| 3.0 + 19.0 * f.powf(1.15);
+            let mut segs = Vec::with_capacity(n);
+            for i in 0..n {
+                let f = (i as f32 + 0.5) / n as f32;
+                let cc = if f > 0.86 { Color(0xffff3b2a) } else if f > 0.70 { c.mix(Color(0xffff8a1f), 0.65) } else { c };
+                let h = height(f);
+                segs.push(Seg { r: Rect::new(r.x + i as f32 * pitch + pitch * 0.2, base - h, pitch * 0.6, h), c: cc, on: f <= prop });
             }
-            scene.fill_poly(vec![Point::new(r.x, cy + 7.0), Point::new(x, y_at), Point::new(x, cy + 7.0)], c, Color(0xffff4a2a));
-            // Hotter along the sloping top, shaded along the floor.
-            let drop = (cy + 7.0 - y_at) * 0.45;
-            scene.fill_poly(vec![Point::new(r.x, cy + 7.0), Point::new(x, y_at), Point::new(x, y_at + drop)], Color(0x66ffffff), Color(0x66ffffff));
-            scene.fill_rect(Rect::new(r.x, cy + 4.0, x - r.x, 3.0), Color(0x00000000), Color(0x59000000), true);
-            let mut sx = r.x;
-            while sx < r.right() {
-                let u = if r.w.abs() < 1.0e-4 { 0.0 } else { (sx - r.x) / r.w };
-                let yt = cy + 7.0 + u * -18.0;
-                vline(scene, sx.trunc(), yt, cy + 7.0, Color(0x70000000), 1.0);
-                sx += 4.0;
+            // Haze behind the lit part of the ramp.
+            if glow && prop > 0.0 { bloom_rect(scene, Rect::new(r.x, base - height(prop) * 0.6, x - r.x, height(prop) * 0.6), 2.0, c.with_alpha(1.0), 7.0, 0.07 * k); }
+            segments(scene, &segs, 0.6, t, glow);
+            for pair in segs.windows(2) {
+                let (a, d) = (&pair[0], &pair[1]);
+                if !(a.on && d.on) { continue; }
+                let gap = Rect::new(a.r.right() + 0.2, d.r.y, (d.r.x - a.r.right() - 0.4).max(0.0), d.r.h);
+                if gap.w > 0.3 { solid_rect(scene, gap, Color(0xff030405).with_alpha(0.6)); }
             }
-            // The panel's shadow falls in from the sloping edge.
-            for (k, a) in [(0.7f32, 0.42f32), (1.6, 0.24), (2.6, 0.10)] {
-                scene.line(Point::new(r.x + k * 3.0, cy + 7.0 - k * 0.2 + k), Point::new(r.right(), cy - 11.0 + k), Color(0xff000000).with_alpha(a), 1.0);
+            // Bright caps on the lit bars, the slope guide and the baseline.
+            for sg in segs.iter().filter(|sg| sg.on) {
+                solid_rect(scene, Rect::new(sg.r.x, sg.r.y, sg.r.w, 1.0), sg.c.brighter(0.75));
             }
-            scene.stroke_poly(ramp, c.with_alpha(0.45), 1.0, true);
-            if tpos > 0.0 { scene.line(edge[0], edge[1], Color(0xffffffff).with_alpha(0.55), 0.8); }
-            cap(scene, box_at(5.0, 26.0, Point::new(x, cy - 2.0)), 1.5, Color(0xffeeeeea), lt);
+            scene.line(Point::new(r.x, base - height(0.0) - 2.0), Point::new(r.right(), base - height(1.0) - 2.0), c.with_alpha(0.30), 0.6);
+            hline(scene, base + 1.6, r.x, r.right(), c.with_alpha(0.40), 0.7);
+            for i in 0..=4 {
+                let tx = r.x + r.w * i as f32 / 4.0;
+                vline(scene, tx, base + 1.6, base + 3.6, c.with_alpha(0.40), 0.7);
+            }
+            recess_shade(scene, win, 3.0, 2.6, lt);
+            scene.stroke_round(win.reduced(0.5, 0.5), 2.5, c.with_alpha(0.16), 1.0);
+            cap(scene, box_at(5.0, 33.0, Point::new(x, cy - 0.5)), 1.5, Color(0xffeeeeea), lt);
         }
     }
 }

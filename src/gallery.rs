@@ -96,9 +96,33 @@ pub fn paint_page_mode(scene: &mut Scene, page: usize, mode: KnobMode, glow: boo
             retro::draw_lcd_panel(scene, Rect::new(1100.0, 430.0, 150.0, 60.0), "96", "KHZ", "24", "BIT", Color(0xff39f2ff), 1.0, glow);
         }
         3 => {
-            for (i, st) in [SliderStyle::Neon, SliderStyle::Bar, SliderStyle::Chamfer, SliderStyle::Wedge, SliderStyle::Flat].iter().enumerate() {
-                retro::draw_slider(scene, Rect::new(30.0, 30.0 + i as f32 * 70.0, 280.0, 28.0), 0.35 + i as f32 * 0.1, *st, Color(0xff39f2ff), false, 0.5, glow);
-                retro::draw_slider(scene, Rect::new(340.0 + i as f32 * 50.0, 30.0, 28.0, 220.0), 0.6, *st, Color(0xffff4fd8), true, 0.5, glow);
+            const STYLES: [SliderStyle; 5] = [SliderStyle::Neon, SliderStyle::Bar, SliderStyle::Chamfer, SliderStyle::Wedge, SliderStyle::Flat];
+            // On the dark page: two colours and values of each style, both ways up.
+            for (i, st) in STYLES.iter().enumerate() {
+                let y = 34.0 + i as f32 * 58.0;
+                retro::draw_slider(scene, Rect::new(34.0, y, 290.0, 28.0), 0.35 + i as f32 * 0.1, *st, Color(0xff39f2ff), false, 0.5, glow);
+                retro::draw_slider(scene, Rect::new(366.0, y, 290.0, 28.0), 0.9 - i as f32 * 0.15, *st, Color(0xff9dff3a), false, 0.5, glow);
+                retro::draw_slider(scene, Rect::new(706.0 + i as f32 * 54.0, 30.0, 28.0, 280.0), 0.6, *st, Color(0xffff4fd8), true, 0.5, glow);
+                retro::draw_slider(scene, Rect::new(990.0 + i as f32 * 54.0, 30.0, 28.0, 280.0), 0.2 + i as f32 * 0.18, *st, Color(0xffffb02e), true, 0.5, glow);
+            }
+            // On plates: a dark blue powder coat and a pale brushed one, with the slot faders
+            // whose scale ink follows the plate.
+            for (ox, top, bottom, finish, accent) in [
+                (16.0f32, 0xff2a418au32, 0xff1d2f66u32, crate::hardware::FINISH_POWDER, 0xff39f2ffu32),
+                (648.0, 0xffdfe2e4, 0xffc3c8cb, crate::hardware::FINISH_BRUSHED, 0xffff7a1f),
+            ] {
+                let plate = Rect::new(ox, 344.0, 616.0, 500.0);
+                draw_panel(scene, plate, Color(top), Color(bottom), finish);
+                crate::hardware::draw_corner_screws(scene, plate, crate::hardware::ScrewHead::Cross);
+                for (i, st) in STYLES.iter().enumerate() {
+                    retro::draw_slider(scene, Rect::new(ox + 44.0, 392.0 + i as f32 * 56.0, 270.0, 28.0), 0.3 + i as f32 * 0.13, *st, Color(accent), false, 0.5, glow);
+                    retro::draw_slider(scene, Rect::new(ox + 356.0 + i as f32 * 50.0, 388.0, 28.0, 266.0), 0.85 - i as f32 * 0.14, *st, Color(accent), true, 0.5, glow);
+                }
+                let on = Color(top).mix(Color(bottom), 0.5);
+                meters::draw_fader_on(scene, Rect::new(ox + 44.0, 690.0, 528.0, 36.0), 0.62, FaderCap::Console, Color(0xffd0d0d0), false, true, on);
+                meters::draw_fader_on(scene, Rect::new(ox + 44.0, 748.0, 528.0, 30.0), 0.3, FaderCap::Oval, Color(0xff2b2d30), false, true, on);
+                meters::draw_fader_on(scene, Rect::new(ox + 44.0, 796.0, 250.0, 26.0), 0.8, FaderCap::Console, Color(0xffc23a2e), false, false, on);
+                meters::draw_fader_on(scene, Rect::new(ox + 322.0, 796.0, 250.0, 26.0), 0.15, FaderCap::Oval, Color(0xfff0f0ee), false, false, on);
             }
         }
         4 => {
@@ -138,6 +162,32 @@ pub fn paint_page_mode(scene: &mut Scene, page: usize, mode: KnobMode, glow: boo
                 meters::draw_lamp(scene, Point::new(ox + 440.0, 480.0), 9.0, Color(0xff5be85a), true);
                 meters::draw_lamp(scene, Point::new(ox + 476.0, 480.0), 9.0, Color(0xffffb02e), true);
                 meters::draw_lit_key(scene, Rect::new(ox + 506.0, 466.0, 70.0, 28.0), "LINK", true, Color(0xffff9a1f), false);
+            }
+            // Lower half: pressed states, key banks in the other styles and more colours, on a
+            // dark blue anodised plate and a cream one.
+            const PUSH: [PushStyle; 8] = [PushStyle::Square, PushStyle::Round, PushStyle::Dome, PushStyle::Chamfer, PushStyle::Neon, PushStyle::Flat, PushStyle::Arcade, PushStyle::Pill];
+            for (ox, top, bottom, finish) in [
+                (8.0f32, 0xff24397fu32, 0xff182a63u32, crate::hardware::FINISH_ANODISED),
+                (648.0, 0xfff6efd9, 0xffe4dbbd, crate::hardware::FINISH_FLAT),
+            ] {
+                let oy = 560.0;
+                draw_panel(scene, Rect::new(ox, oy, 616.0, 288.0), Color(top), Color(bottom), finish);
+                for (i, st) in PUSH.iter().enumerate() {
+                    let x = ox + 22.0 + i as f32 * 73.0;
+                    switches::draw_push(scene, Rect::new(x, oy + 20.0, 62.0, 30.0), "ON", *st, Color(0xffe8452c), true, true, glow);
+                    switches::draw_push(scene, Rect::new(x, oy + 62.0, 62.0, 30.0), "OFF", *st, Color(0xffe8452c), false, true, glow);
+                }
+                switches::draw_key_bank(scene, Rect::new(ox + 24.0, oy + 110.0, 250.0, 30.0), &["LO", "MID", "HI"], 0, PushStyle::Flat, Color(0xff5be85a), glow);
+                switches::draw_key_bank(scene, Rect::new(ox + 300.0, oy + 110.0, 292.0, 30.0), &["2:1", "4:1", "8:1", "20:1"], 1, PushStyle::Pill, Color(0xffffb02e), glow);
+                switches::draw_key_bank(scene, Rect::new(ox + 22.0, oy + 156.0, 254.0, 32.0), &["A", "B", "C"], 2, PushStyle::Neon, Color(0xffff4fd8), glow);
+                switches::draw_key_bank(scene, Rect::new(ox + 300.0, oy + 154.0, 292.0, 36.0), &["1", "2", "3", "4", "5"], 3, PushStyle::Dome, Color(0xff39f2ff), glow);
+                for (i, icon) in [Icon::Battery, Icon::Warning, Icon::ArrowLeft, Icon::ArrowRight, Icon::Beam, Icon::Temp].iter().enumerate() {
+                    retro::draw_icon_lamp(scene, Rect::new(ox + 24.0 + i as f32 * 46.0, oy + 216.0, 36.0, 36.0), *icon, [Color(0xff39f2ff), Color(0xffff3b4a), Color(0xff5be85a)][i % 3], i % 2 == 0);
+                }
+                switches::draw_rocker(scene, Rect::new(ox + 312.0, oy + 216.0, 70.0, 36.0), true, Color(0xffffb02e), RockerStyle::Lamp, true, glow);
+                switches::draw_rocker(scene, Rect::new(ox + 398.0, oy + 216.0, 70.0, 36.0), true, Color(0xff39f2ff), RockerStyle::Neon, true, glow);
+                switches::draw_toggle_at(scene, Rect::new(ox + 490.0, oy + 208.0, 40.0, 70.0), 1.0, ToggleStyle::Lever, Color(0xff5be85a));
+                switches::draw_toggle_at(scene, Rect::new(ox + 545.0, oy + 200.0, 40.0, 70.0), -1.0, ToggleStyle::Bat, Color(0xff5be85a));
             }
         }
         _ => paint_spectrum_page(scene),

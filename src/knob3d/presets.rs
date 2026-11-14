@@ -54,11 +54,12 @@ fn satin() -> KnobModel {
         seg(Dome, 0.965, 0.985, 0.05, 0.02, base),
     ])
     .with_edge(0.008)
-    .with_pointer(Pointer::groove(0.56, 0.94, 0.08, 0.016, Material::ink()))
+    .with_pointer(Pointer::groove(0.50, 0.94, 0.10, 0.016, Material::ink()))
 }
 
 /// Black scalloped program-equaliser knob: eight-lobed grip with a flat top ring and a
-/// recessed centre, on a wide flared skirt that carries the white index line.
+/// recessed centre, on a wide flared skirt; the white index line is on the skirt and again
+/// on the top ring, so it shows when the grip hides the skirt behind it.
 fn bakelite() -> KnobModel {
     let black = Material::black_polished();
     KnobModel::new(vec![
@@ -72,6 +73,7 @@ fn bakelite() -> KnobModel {
     .with_angular(Angular { r_out: 0.9, ..Angular::scallops(8, 0.13, 0.50) })
     .with_edge(0.02)
     .with_pointer(Pointer::line(0.72, 0.985, 0.075, white()))
+    .with_mark(Pointer::line(0.36, 0.60, 0.08, white()))
 }
 
 /// Spun-aluminium cap on a knurled black skirt.
@@ -146,7 +148,8 @@ fn collet() -> KnobModel {
     ])
     .with_angular(Angular::flutes(18, 0.07, 0.50))
     .with_edge(0.012)
-    .with_pointer(Pointer::groove(0.66, 0.97, 0.09, 0.012, Material::ink()))
+    .with_pointer(Pointer::groove(0.66, 0.97, 0.10, 0.012, Material::ink()))
+    .with_mark(Pointer::line(0.08, 0.39, 0.09, Material::ink()))
 }
 
 /// Black chicken-head pointer: a teardrop with a flat crest that falls away to the tip
@@ -174,32 +177,33 @@ fn chicken() -> KnobModel {
     .with_pointer(Pointer::line(0.0, 0.975, 0.05, white()))
 }
 
-/// Die-cast winged pointer knob: tall round body with a large recessed accent insert, a
-/// long pointing fin and three short lugs, on a thin flange.
+/// Die-cast winged pointer knob: round body with a large recessed accent insert, a long
+/// fin that stands proud of the rim from the edge of the insert out to the tip, and
+/// three short lugs, on a thin flange.
 fn wing() -> KnobModel {
     let cast = Material::die_cast();
     let disc = Material::plastic(0.5, 0.5, 0.5, 0.5).with_accent(1.0).with_coat(0.35).with_grain(0.03);
     let fin = Part::new(
-        vec![seg(Flat, 0.0, 0.92, 0.74, 0.74, cast), seg(Line, 0.92, 0.975, 0.74, 0.64, cast), seg(Line, 0.975, 1.0, 0.64, 0.05, cast)],
-        Plan::Bar { tip: 1.0, tail: 0.0, tip_width: 0.10, tail_width: 0.36, rounding: 0.07 },
+        vec![seg(Flat, 0.0, 0.93, 0.88, 0.88, cast), seg(Line, 0.93, 0.975, 0.88, 0.78, cast), seg(Line, 0.975, 1.0, 0.78, 0.05, cast)],
+        Plan::Bar { tip: 1.0, tail: -0.43, tip_width: 0.11, tail_width: 0.27, rounding: 0.06 },
     );
     let lugs = Part::new(
-        vec![seg(Flat, 0.0, 0.63, 0.56, 0.56, cast), seg(Line, 0.63, 0.68, 0.56, 0.48, cast), seg(Line, 0.68, 0.71, 0.48, 0.05, cast)],
+        vec![seg(Flat, 0.0, 0.58, 0.56, 0.56, cast), seg(Line, 0.58, 0.63, 0.56, 0.48, cast), seg(Line, 0.63, 0.66, 0.48, 0.05, cast)],
         Plan::Round,
     )
     .with_angular(Angular::teeth(4, 0.24, 0.20, 0.25));
     KnobModel::new(vec![
-        seg(Flat, 0.0, 0.53, 0.78, 0.78, cast),
-        seg(Line, 0.53, 0.56, 0.78, 0.75, cast),
-        seg(Line, 0.56, 0.58, 0.75, 0.12, cast),
-        seg(Flat, 0.58, 0.62, 0.10, 0.10, cast),
-        seg(Line, 0.62, 0.645, 0.10, 0.02, cast),
+        seg(Flat, 0.0, 0.47, 0.78, 0.78, cast),
+        seg(Line, 0.47, 0.50, 0.78, 0.75, cast),
+        seg(Line, 0.50, 0.52, 0.75, 0.12, cast),
+        seg(Flat, 0.52, 0.57, 0.10, 0.10, cast),
+        seg(Line, 0.57, 0.595, 0.10, 0.02, cast),
     ])
     .with_part(fin)
     .with_part(lugs)
-    .with_insert(0.48, 0.04, disc)
+    .with_insert(0.42, 0.04, disc)
     .with_edge(0.012)
-    .with_pointer(Pointer::groove(0.66, 0.95, 0.03, 0.012, Material::plastic(0.30, 0.30, 0.31, 0.6)))
+    .with_pointer(Pointer::groove(0.50, 0.95, 0.045, 0.014, Material::ink()))
 }
 
 /// Cream fluted vintage knob on a flared skirt, dark pointer line.
@@ -223,7 +227,8 @@ fn chrome() -> KnobModel {
         seg(Dome, 0.93, 0.99, 0.10, 0.03, cr),
     ])
     .with_edge(0.022)
-    .with_pointer(Pointer::groove(0.56, 0.95, 0.09, 0.012, Material::ink()))
+    .with_pointer(Pointer::groove(0.56, 0.95, 0.11, 0.012, Material::ink()))
+    .with_mark(Pointer::groove(0.06, 0.38, 0.10, 0.012, Material::ink()))
 }
 
 /// Plain black skirted pointer knob: white line on the cap and again on the skirt.

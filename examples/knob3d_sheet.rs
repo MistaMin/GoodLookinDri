@@ -225,11 +225,53 @@ fn small(out: &str, radius: f32) {
     std::fs::write(out, data).expect("write ppm");
 }
 
+/// Knobs at five angles across the sweep on the near-black panel:
+/// `knob3d_sheet out.ppm angles 24` for every style and preset, or
+/// `knob3d_sheet out.ppm angles 72 A wing` for chosen ones. A pointer has to stay
+/// visible and unambiguous at each of them.
+fn angles(out: &str, radius: f32, pick: &[String]) {
+    let all: Vec<String> = STYLE_CODES.iter().chain(PRESETS.iter()).map(|c| c.to_string()).collect();
+    let codes: &[String] = if pick.is_empty() { &all } else { pick };
+    let cell = (radius * 2.7) as usize;
+    let group = cell * 5 + cell / 3;
+    let per_row = (1600 / group).clamp(1, 4).min(codes.len());
+    let rows = codes.len().div_ceil(per_row);
+    let (w, h) = (per_row * group, rows * cell);
+    let mut img = vec![0u8; w * h * 3];
+    for (i, px) in img.chunks_mut(3).enumerate() {
+        let p = panel(2 * COL, i / w, 1);
+        for c in 0..3 {
+            px[c] = (p[c].clamp(0.0, 1.0) * 255.0).round() as u8;
+        }
+    }
+    let (rig, cache, dark) = (Rig::studio(), KnobCache::global(), Color(FLOORS[2]));
+    for (i, code) in codes.iter().enumerate() {
+        // a preset name wins only where it is not also a style alias in the catalogue
+        let model = if pick.is_empty() && i < STYLE_CODES.len() { style_model(code) } else { preset(code).or_else(|| style_model(code)) };
+        let Some(model) = model else {
+            eprintln!("unknown knob {code}");
+            continue;
+        };
+        let (gx, cy) = ((i % per_row * group) as i32, ((i / per_row) * cell + cell / 2 + cell / 12) as i32);
+        for (k, a) in [-0.8f32, -0.4, 0.0, 0.4, 0.8].iter().enumerate() {
+            let s = cache.get(&model, &rig, radius, a * PI, Color(0xffe0_7a5a), dark);
+            blit(&mut img, w, h, &s, gx + (cell * k + cell / 2) as i32, cy);
+        }
+    }
+    let mut data = format!("P6\n{w} {h}\n255\n").into_bytes();
+    data.extend_from_slice(&img);
+    std::fs::write(out, data).expect("write ppm");
+}
+
 fn main() {
-    let out = std::env::args().nth(1).expect("usage: knob3d_sheet <out.ppm> [focus <code>... | small <radius>]");
+    let out = std::env::args().nth(1).expect("usage: knob3d_sheet <out.ppm> [focus <code>... | small <radius> | angles <radius> [code...]]");
     let rest: Vec<String> = std::env::args().skip(2).collect();
     if rest.first().map(String::as_str) == Some("focus") {
         focus(&out, &rest[1..]);
+        return;
+    }
+    if rest.first().map(String::as_str) == Some("angles") {
+        angles(&out, rest.get(1).and_then(|r| r.parse().ok()).unwrap_or(24.0), rest.get(2..).unwrap_or(&[]));
         return;
     }
     if rest.first().map(String::as_str) == Some("small") {
