@@ -10,6 +10,7 @@ pub mod design;
 pub mod editor;
 pub mod host;
 pub mod level;
+pub mod light;
 pub mod looks;
 pub mod scene;
 pub mod settings;
@@ -40,3 +41,4 @@ pub mod gallery;
 
 pub mod readout;
 pub mod layout;
+pub mod knob3d;
