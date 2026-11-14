@@ -20,12 +20,23 @@ pub struct Material {
     pub grain: f32,
     /// How much of the caller's accent colour replaces `base`, 0..1.
     pub accent: f32,
+    /// Brightness of the accent colour on this material (1 = as given). Below 1 gives the
+    /// darker side wall of a coloured cap in the same hue.
+    pub accent_shade: f32,
+    /// Concentric lathe rings cut into a turned face, 0..1.
+    pub rings: f32,
+    /// Straight wood figure (grain lines, pores, slow colour bands) along the pointer axis.
+    pub wood: f32,
+    /// Soft-touch sheen: a velvety lift of the colour at grazing angles.
+    pub sheen: f32,
+    /// Light that enters and comes back out tinted: makes glossy plastic look see-through.
+    pub translucency: f32,
 }
 
 impl Material {
     /// Bare metal with an sRGB tint.
     pub fn metal(r: f32, g: f32, b: f32, roughness: f32) -> Self {
-        Self { base: [to_linear(r), to_linear(g), to_linear(b)], metallic: 1.0, roughness, f0: 0.04, anisotropy: 0.0, clear_coat: 0.0, grain: 0.0, accent: 0.0 }
+        Self { base: [to_linear(r), to_linear(g), to_linear(b)], metallic: 1.0, roughness, f0: 0.04, anisotropy: 0.0, clear_coat: 0.0, grain: 0.0, accent: 0.0, accent_shade: 1.0, rings: 0.0, wood: 0.0, sheen: 0.0, translucency: 0.0 }
     }
     /// Paint or plastic with an sRGB colour.
     pub fn plastic(r: f32, g: f32, b: f32, roughness: f32) -> Self {
@@ -47,11 +58,111 @@ impl Material {
         self.accent = a;
         self
     }
+    /// Accent share and the brightness of the accent on this material.
+    pub fn with_accent_shade(mut self, a: f32, shade: f32) -> Self {
+        self.accent = a;
+        self.accent_shade = shade;
+        self
+    }
+    pub fn with_rings(mut self, r: f32) -> Self {
+        self.rings = r;
+        self
+    }
+    pub fn with_wood(mut self, w: f32) -> Self {
+        self.wood = w;
+        self
+    }
+    pub fn with_sheen(mut self, s: f32) -> Self {
+        self.sheen = s;
+        self
+    }
+    pub fn with_translucency(mut self, t: f32) -> Self {
+        self.translucency = t;
+        self
+    }
+    pub fn with_roughness(mut self, r: f32) -> Self {
+        self.roughness = r;
+        self
+    }
+
+    /// Lacquered wood in any sRGB colour: straight figure under a clear coat.
+    pub fn wood(r: f32, g: f32, b: f32) -> Self {
+        Self::plastic(r, g, b, 0.55).with_wood(1.0).with_coat(0.85)
+    }
+    /// Dark brown walnut under lacquer.
+    pub fn walnut() -> Self {
+        Self::wood(0.36, 0.20, 0.10)
+    }
+    /// Pale maple under lacquer.
+    pub fn maple() -> Self {
+        Self::wood(0.80, 0.62, 0.38).with_wood(0.6)
+    }
+    /// Polished yellow brass.
+    pub fn brass() -> Self {
+        Self::metal(0.93, 0.74, 0.36, 0.16)
+    }
+    /// Darker, redder bronze with a satin finish.
+    pub fn bronze() -> Self {
+        Self::metal(0.70, 0.46, 0.26, 0.30).with_grain(0.03)
+    }
+    /// Mirror chrome.
+    pub fn chrome() -> Self {
+        Self::metal(0.95, 0.95, 0.96, 0.04)
+    }
+    /// Satin (bead-blasted or fine-brushed) aluminium.
+    pub fn satin_aluminium() -> Self {
+        Self::metal(0.93, 0.93, 0.925, 0.42).with_grain(0.02)
+    }
+    /// Turned aluminium face: lathe rings that spread the highlight into a fan.
+    pub fn spun_aluminium() -> Self {
+        Self::metal(0.90, 0.905, 0.91, 0.09).with_aniso(0.55).with_rings(0.5)
+    }
+    /// Die-cast zinc or aluminium: so rough that it is lit almost like paint.
+    pub fn die_cast() -> Self {
+        Self { metallic: 0.5, ..Self::plastic(0.74, 0.75, 0.76, 0.5) }.with_grain(0.05)
+    }
+    /// Dyed anodised aluminium: a coloured metal with a fine satin finish.
+    pub fn anodised(r: f32, g: f32, b: f32) -> Self {
+        Self::metal(r, g, b, 0.34).with_grain(0.02)
+    }
+    /// Matte rubber or soft-touch paint.
+    pub fn rubber(r: f32, g: f32, b: f32) -> Self {
+        Self { f0: 0.03, ..Self::plastic(r, g, b, 0.85) }.with_sheen(0.6)
+    }
+    /// Cream plastic that has yellowed a little with age.
+    pub fn cream() -> Self {
+        Self::plastic(0.86, 0.80, 0.64, 0.42).with_coat(0.35)
+    }
+    /// Deep glossy black moulding compound.
+    pub fn black_gloss() -> Self {
+        Self::plastic(0.035, 0.034, 0.033, 0.5).with_coat(0.9)
+    }
+    /// Matte to eggshell black plastic.
+    pub fn black_matte() -> Self {
+        Self::plastic(0.075, 0.075, 0.08, 0.5)
+    }
+    /// Glossy coloured plastic that light travels through.
+    pub fn translucent(r: f32, g: f32, b: f32) -> Self {
+        Self::plastic(r, g, b, 0.5).with_coat(1.0).with_translucency(0.8)
+    }
+    /// Glossy opaque plastic.
+    pub fn gloss(r: f32, g: f32, b: f32) -> Self {
+        Self::plastic(r, g, b, 0.5).with_coat(0.9)
+    }
+    /// Off-white paint for pointer lines.
+    pub fn white_paint() -> Self {
+        Self::plastic(0.94, 0.93, 0.89, 0.6)
+    }
+    /// Black paint for pointer lines.
+    pub fn ink() -> Self {
+        Self::plastic(0.03, 0.03, 0.033, 0.9)
+    }
+
     pub(crate) fn tinted(mut self, accent: Color) -> Self {
         if self.accent > 0.0 {
             let c = [accent.r(), accent.g(), accent.b()];
             for i in 0..3 {
-                let l = to_linear(c[i] as f32 / 255.0);
+                let l = to_linear(c[i] as f32 / 255.0) * self.accent_shade;
                 self.base[i] += (l - self.base[i]) * self.accent.min(1.0);
             }
         }
@@ -125,12 +236,87 @@ pub struct Angular {
     pub r_out: f32,
 }
 
+impl Angular {
+    /// Fine straight knurling from `r_in` outwards.
+    pub fn knurl(count: u32, depth: f32, r_in: f32) -> Self {
+        Self { kind: AngularKind::Knurl, count, depth, r_in, r_out: 1.0 }
+    }
+    /// Smooth finger flutes from `r_in` outwards.
+    pub fn flutes(count: u32, depth: f32, r_in: f32) -> Self {
+        Self { kind: AngularKind::Flutes, count, depth, r_in, r_out: 1.0 }
+    }
+    /// Scalloped lobes from `r_in` outwards; a lobe is centred on the pointer.
+    pub fn scallops(count: u32, depth: f32, r_in: f32) -> Self {
+        Self { kind: AngularKind::Scallops, count, depth, r_in, r_out: 1.0 }
+    }
+}
+
+/// Plan shape of a body: what a horizontal slice through it looks like.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum Plan {
+    /// Circle: the profile is revolved around the axis.
+    #[default]
+    Round,
+    /// Regular polygon with corners at the profile radius and a flat facing the pointer.
+    /// `rounding` 0..1 rounds the corners (1 is nearly a circle). 4 sides with rounding
+    /// gives a rounded square, 6 a hexagon, 8 an octagon.
+    Polygon { sides: u32, rounding: f32 },
+    /// Tapered bar along the pointer axis from `-tail` behind the axis to `tip` ahead of
+    /// it, with half-widths `tail_width` and `tip_width`; `rounding` is the corner radius.
+    /// All in fractions of the knob radius. The profile is read by distance from the
+    /// bar's outline: profile radius 1 is the outline and `1 - d` lies `d` inside it, so
+    /// a chamfer drawn from 0.9 to 1 is a bevel of constant width all the way round.
+    Bar { tip: f32, tail: f32, tip_width: f32, tail_width: f32, rounding: f32 },
+}
+
+/// An extra solid on the knob (fin, beak, hub, second tier). The surface is the highest
+/// of the body, the under-body and every part.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Part {
+    pub profile: Vec<Segment>,
+    pub plan: Plan,
+    pub angular: Vec<Angular>,
+}
+
+impl Part {
+    pub fn new(profile: Vec<Segment>, plan: Plan) -> Self {
+        Self { profile, plan, angular: Vec::new() }
+    }
+    pub fn with_angular(mut self, a: Angular) -> Self {
+        self.angular.push(a);
+        self
+    }
+}
+
+/// Disc let into the top face: sunk by `depth` and given its own material.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Insert {
+    pub r: f32,
+    pub depth: f32,
+    pub material: Material,
+}
+
+/// Grub-screw hole in the side wall.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SetScrew {
+    /// Clockwise from the pointer, radians.
+    pub angle: f32,
+    /// Height of the hole centre above the panel, fraction of the radius.
+    pub height: f32,
+    /// Hole radius, fraction of the radius.
+    pub radius: f32,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PointerKind {
     /// Painted line, flush with the surface.
     Line,
     /// Milled groove filled with the pointer material.
     Groove,
+    /// Round dot centred at `r1` with diameter `width`; `depth` > 0 sinks it as a dimple.
+    Dot,
+    /// Raised bar of height `depth` with rounded flanks.
+    Ridge,
 }
 
 /// Radial indicator from `r0` to `r1` along the knob's zero direction.
@@ -144,6 +330,25 @@ pub struct Pointer {
     /// Groove depth as a fraction of the radius (ignored for `Line`).
     pub depth: f32,
     pub material: Material,
+}
+
+impl Pointer {
+    /// Painted line from `r0` to `r1`.
+    pub fn line(r0: f32, r1: f32, width: f32, material: Material) -> Self {
+        Self { kind: PointerKind::Line, r0, r1, width, depth: 0.0, material }
+    }
+    /// Milled and filled groove.
+    pub fn groove(r0: f32, r1: f32, width: f32, depth: f32, material: Material) -> Self {
+        Self { kind: PointerKind::Groove, r0, r1, width, depth, material }
+    }
+    /// Dot at radius `r`; `depth` > 0 makes it a dimple.
+    pub fn dot(r: f32, diameter: f32, depth: f32, material: Material) -> Self {
+        Self { kind: PointerKind::Dot, r0: r, r1: r, width: diameter, depth, material }
+    }
+    /// Raised bar standing `height` proud of the surface.
+    pub fn ridge(r0: f32, r1: f32, width: f32, height: f32, material: Material) -> Self {
+        Self { kind: PointerKind::Ridge, r0, r1, width, depth: height, material }
+    }
 }
 
 /// A knob as a height field over its base circle.
@@ -160,6 +365,14 @@ pub struct KnobModel {
     pub height: f32,
     /// Edge rounding radius as a fraction of the radius.
     pub edge: f32,
+    /// Plan shape of `profile` (the under-body is always round).
+    pub plan: Plan,
+    /// Extra solids: fins, beaks, tiers.
+    pub parts: Vec<Part>,
+    /// More indicators besides `pointer` (a second line on the skirt, a dot, ...).
+    pub marks: Vec<Pointer>,
+    pub insert: Option<Insert>,
+    pub screw: Option<SetScrew>,
 }
 
 /// Fixed studio lighting and camera, defined in panel space.
@@ -185,6 +398,9 @@ pub struct Rig {
     pub shadow: f32,
     /// Darkness of the contact shadow / base occlusion on the panel, 0..1.
     pub occlusion: f32,
+    /// Rim light: a low ring of light around the set plus the glow dark panels throw back
+    /// at the walls. Keeps black knobs readable on black panels; fades on bright ones.
+    pub rim: f32,
 }
 
 impl Rig {
@@ -201,6 +417,7 @@ impl Rig {
             tilt: 14f32.to_radians(),
             shadow: 0.72,
             occlusion: 0.6,
+            rim: 1.0,
         }
     }
 }
@@ -222,27 +439,81 @@ pub struct Sprite {
 }
 
 impl KnobModel {
+    /// Round body from a radial profile; everything else is added with the `with_*` calls.
+    pub fn new(profile: Vec<Segment>) -> Self {
+        Self { profile, under: Vec::new(), angular: Vec::new(), pointer: None, height: 1.0, edge: 0.015, plan: Plan::Round, parts: Vec::new(), marks: Vec::new(), insert: None, screw: None }
+    }
+    /// Stepped two-tier body: a wide lower ring of radius 1 and height `lower_h`, and a
+    /// cap of radius `upper_r` that stands `upper_h` tall, each with a small chamfer.
+    pub fn two_tier(lower_h: f32, upper_r: f32, upper_h: f32, lower: Material, upper: Material) -> Self {
+        let c = 0.035;
+        Self::new(vec![
+            Segment::new(Shape::Dome, 0.0, upper_r - c, upper_h + 0.012, upper_h, upper),
+            Segment::new(Shape::Line, upper_r - c, upper_r, upper_h, upper_h - c, upper),
+            Segment::new(Shape::Line, upper_r, upper_r + 0.012, upper_h - c, lower_h, upper),
+            Segment::new(Shape::Flat, upper_r + 0.012, 0.95 - c, lower_h, lower_h, lower),
+            Segment::new(Shape::Line, 0.95 - c, 0.95, lower_h, lower_h - c, lower),
+            Segment::new(Shape::Line, 0.95, 0.975, lower_h - c, 0.03, lower),
+        ])
+    }
+    /// Round under-body (skirt, hub, bezel) that angular detail and `plan` do not touch.
+    pub fn with_under(mut self, under: Vec<Segment>) -> Self {
+        self.under = under;
+        self
+    }
+    pub fn with_angular(mut self, a: Angular) -> Self {
+        self.angular.push(a);
+        self
+    }
+    /// Polygon or bar silhouette for the main profile.
+    pub fn with_plan(mut self, plan: Plan) -> Self {
+        self.plan = plan;
+        self
+    }
+    pub fn with_part(mut self, part: Part) -> Self {
+        self.parts.push(part);
+        self
+    }
+    pub fn with_pointer(mut self, p: Pointer) -> Self {
+        self.pointer = Some(p);
+        self
+    }
+    /// A further indicator in addition to the pointer.
+    pub fn with_mark(mut self, p: Pointer) -> Self {
+        self.marks.push(p);
+        self
+    }
+    /// Recessed insert disc of radius `r`, sunk by `depth`.
+    pub fn with_insert(mut self, r: f32, depth: f32, material: Material) -> Self {
+        self.insert = Some(Insert { r, depth, material });
+        self
+    }
+    /// Set-screw hole in the wall, `angle` radians clockwise from the pointer.
+    pub fn with_set_screw(mut self, angle: f32, height: f32, radius: f32) -> Self {
+        self.screw = Some(SetScrew { angle, height, radius });
+        self
+    }
+    pub fn with_edge(mut self, edge: f32) -> Self {
+        self.edge = edge;
+        self
+    }
+    pub fn with_height(mut self, height: f32) -> Self {
+        self.height = height;
+        self
+    }
     /// Stable-within-process identity of the model for cache keys.
     pub(crate) fn fingerprint(&self) -> u64 {
         hash_debug(self)
-    }
-    /// `Some(pitch)` when the body looks the same after turning by `pitch` radians for
-    /// every angular detail it has (0 = any angle), `None` when each angle is a new shape.
-    pub(crate) fn symmetry(&self) -> Option<f32> {
-        let mut count = 0u32;
-        for a in &self.angular {
-            match a.kind {
-                AngularKind::Knurl if count == 0 || count == a.count => count = a.count,
-                _ => return None,
-            }
-        }
-        Some(if count == 0 { 0.0 } else { 2.0 * std::f32::consts::PI / count as f32 })
     }
 }
 
 impl Rig {
     pub(crate) fn fingerprint(&self) -> u64 {
         hash_debug(self)
+    }
+    /// Identity of everything but the panel colour (what the environment maps depend on).
+    pub(crate) fn env_fingerprint(&self) -> u64 {
+        hash_debug(&Rig { floor: Color(0), ..*self })
     }
 }
 

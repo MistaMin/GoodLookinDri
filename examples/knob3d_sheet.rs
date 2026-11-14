@@ -1,5 +1,6 @@
-//! Contact sheet for the 3D knobs: every preset at two sizes and three angles, over a light
-//! brushed panel (left half) and a dark blue panel (right half). Writes a binary PPM.
+//! Contact sheet for the 3D knobs: every preset at three sizes and several angles over
+//! three panels (brushed silver, dark blue, near-black), then a row of material swatches
+//! and a row of shape modifiers. Writes a binary PPM and prints timings.
 //!
 //! `cargo run --release --example knob3d_sheet -- out.ppm`
 
@@ -7,11 +8,13 @@ use std::f32::consts::PI;
 use std::time::Instant;
 
 use goodlookindri::color::Color;
-use goodlookindri::knob3d::{preset, render, KnobBake, KnobCache, Rig, Sprite, PRESETS};
+use goodlookindri::knob3d::{preset, render, Angular, KnobBake, KnobCache, KnobModel, Material, Plan, Pointer, Rig, Segment, Shape, Sprite, PRESETS};
 
-const HALF: usize = 960;
-const ROW: usize = 215;
-const ANGLES: [f32; 3] = [-0.8 * PI, -0.2 * PI, 0.55 * PI];
+const COL: usize = 640;
+const ROW: usize = 190;
+const ANGLES: [f32; 6] = [-0.2 * PI, -0.8 * PI, 0.55 * PI, 0.0, -0.45 * PI, 0.8 * PI];
+/// Panel colours handed to the renderer for the three columns.
+const FLOORS: [u32; 3] = [0xffcc_cccc, 0xff17_3366, 0xff14_181b];
 
 fn hash(x: i32, y: i32) -> f32 {
     let mut h = (x as u32).wrapping_mul(0x9e37_79b1) ^ (y as u32).wrapping_mul(0x85eb_ca6b);
@@ -21,17 +24,25 @@ fn hash(x: i32, y: i32) -> f32 {
     (h & 0xffff) as f32 / 65535.0
 }
 
-fn panel(x: usize, y: usize) -> [f32; 3] {
+fn panel(x: usize, y: usize, rows: usize) -> [f32; 3] {
     let (xi, yi) = (x as i32, y as i32);
-    if x < HALF {
-        // brushed aluminium: long horizontal streaks plus a soft vertical gradient
-        let streak = 0.5 * hash(xi / 90, yi) + 0.3 * hash((xi + 40) / 23, yi + 1000) + 0.2 * hash(xi, yi);
-        let g = 0.80 + 0.07 * (streak - 0.5) - 0.05 * (y as f32 / (ROW * PRESETS.len()) as f32);
-        [g, g, g * 1.005]
-    } else {
-        let n = 0.012 * (hash(xi, yi) - 0.5);
-        let v = 1.0 - 0.12 * (y as f32 / (ROW * PRESETS.len()) as f32);
-        [(0.09 + n) * v, (0.20 + n) * v, (0.40 + n) * v]
+    let v = y as f32 / (ROW * rows) as f32;
+    match x / COL {
+        0 => {
+            // brushed aluminium: long horizontal streaks plus a soft vertical gradient
+            let streak = 0.5 * hash(xi / 90, yi) + 0.3 * hash((xi + 40) / 23, yi + 1000) + 0.2 * hash(xi, yi);
+            let g = 0.80 + 0.07 * (streak - 0.5) - 0.05 * v;
+            [g, g, g * 1.005]
+        }
+        1 => {
+            let n = 0.012 * (hash(xi, yi) - 0.5);
+            let k = 1.0 - 0.12 * v;
+            [(0.09 + n) * k, (0.20 + n) * k, (0.40 + n) * k]
+        }
+        _ => {
+            let n = 0.008 * (hash(xi, yi) - 0.5);
+            [0.078 + n, 0.094 + n, 0.106 + n]
+        }
     }
 }
 
@@ -54,13 +65,16 @@ fn blit(img: &mut [u8], w: usize, h: usize, s: &Sprite, cx: i32, cy: i32) {
     }
 }
 
-fn dots(img: &mut [u8], w: usize, cx: i32, cy: i32, r: f32, ink: [u8; 3]) {
+fn dots(img: &mut [u8], w: usize, h: usize, cx: i32, cy: i32, r: f32, ink: [u8; 3]) {
     for i in 0..11 {
         let a = -0.8 * PI + 1.6 * PI * i as f32 / 10.0;
         let (px, py) = (cx as f32 + a.sin() * r * 1.32, cy as f32 - a.cos() * r * 1.32);
         let dr = (r * 0.045).max(1.2);
         for y in (py - dr - 1.0) as i32..=(py + dr + 1.0) as i32 {
             for x in (px - dr - 1.0) as i32..=(px + dr + 1.0) as i32 {
+                if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
+                    continue;
+                }
                 let d = ((x as f32 + 0.5 - px).powi(2) + (y as f32 + 0.5 - py).powi(2)).sqrt();
                 let k = (dr + 0.5 - d).clamp(0.0, 1.0);
                 let o = (y as usize * w + x as usize) * 3;
@@ -72,21 +86,86 @@ fn dots(img: &mut [u8], w: usize, cx: i32, cy: i32, r: f32, ink: [u8; 3]) {
     }
 }
 
+/// Plain knob that shows off one material.
+fn swatch(m: Material, light_pointer: bool) -> KnobModel {
+    let p = if light_pointer { Material::white_paint() } else { Material::ink() };
+    KnobModel::new(vec![
+        Segment::new(Shape::Dome, 0.0, 0.60, 0.80, 0.775, m),
+        Segment::new(Shape::Dome, 0.60, 0.86, 0.775, 0.60, m),
+        Segment::new(Shape::Line, 0.86, 0.93, 0.60, 0.03, m),
+    ])
+    .with_edge(0.02)
+    .with_pointer(Pointer::line(0.34, 0.82, 0.07, p))
+}
+
+/// Flat-topped cylinder used to show the shape modifiers.
+fn puck(m: Material) -> KnobModel {
+    KnobModel::new(vec![
+        Segment::new(Shape::Flat, 0.0, 0.84, 0.72, 0.72, m),
+        Segment::new(Shape::Line, 0.84, 0.88, 0.72, 0.68, m),
+        Segment::new(Shape::Line, 0.88, 0.93, 0.68, 0.03, m),
+    ])
+    .with_edge(0.012)
+}
+
+fn materials() -> Vec<KnobModel> {
+    vec![
+        swatch(Material::walnut(), true),
+        swatch(Material::maple(), false),
+        swatch(Material::brass(), false),
+        swatch(Material::bronze(), false),
+        swatch(Material::anodised(0.16, 0.36, 0.78), true),
+        swatch(Material::rubber(0.12, 0.12, 0.13), true),
+        swatch(Material::cream(), false),
+        swatch(Material::translucent(0.80, 0.10, 0.08), true),
+    ]
+}
+
+fn modifiers() -> Vec<KnobModel> {
+    let alu = Material::satin_aluminium();
+    let black = Material::black_matte();
+    vec![
+        // concentric lathe rings on the face
+        puck(Material::satin_aluminium().with_roughness(0.2).with_rings(1.0)).with_pointer(Pointer::groove(0.3, 0.84, 0.07, 0.015, Material::ink())),
+        // dot pointer
+        puck(black).with_pointer(Pointer::dot(0.58, 0.2, 0.02, Material::white_paint())),
+        // raised ridge pointer
+        puck(black).with_pointer(Pointer::ridge(0.0, 0.8, 0.14, 0.08, black)).with_mark(Pointer::line(0.3, 0.76, 0.04, Material::white_paint())),
+        // recessed insert disc
+        puck(alu).with_insert(0.56, 0.06, Material::gloss(0.75, 0.12, 0.10)).with_pointer(Pointer::line(0.6, 0.9, 0.06, Material::ink())),
+        // stepped two-tier body
+        KnobModel::two_tier(0.34, 0.55, 0.80, black, alu).with_pointer(Pointer::line(0.1, 0.52, 0.06, Material::ink())),
+        // hexagon
+        puck(black).with_plan(Plan::Polygon { sides: 6, rounding: 0.15 }).with_pointer(Pointer::line(0.3, 0.76, 0.07, Material::white_paint())),
+        // octagon
+        puck(alu).with_plan(Plan::Polygon { sides: 8, rounding: 0.1 }).with_pointer(Pointer::line(0.3, 0.8, 0.07, Material::ink())),
+        // rounded square
+        puck(black).with_plan(Plan::Polygon { sides: 4, rounding: 0.35 }).with_pointer(Pointer::line(0.2, 0.62, 0.07, Material::white_paint())),
+        // set screw in the wall, here under a knurled grip
+        puck(alu).with_angular(Angular::knurl(30, 0.03, 0.86)).with_set_screw(0.45 * PI, 0.34, 0.13).with_pointer(Pointer::groove(0.3, 0.84, 0.07, 0.015, Material::ink())),
+    ]
+}
+
 fn main() {
     let out = std::env::args().nth(1).expect("usage: knob3d_sheet <out.ppm>");
-    let (w, h) = (HALF * 2, ROW * PRESETS.len());
+    let rows = PRESETS.len() + 2;
+    let (w, h) = (COL * 3, ROW * rows);
     let mut img = vec![0u8; w * h * 3];
     for y in 0..h {
         for x in 0..w {
-            let p = panel(x, y);
+            let p = panel(x, y, rows);
             for c in 0..3 {
                 img[(y * w + x) * 3 + c] = (p[c].clamp(0.0, 1.0) * 255.0 + hash(x as i32 + c as i32 * 7, y as i32 + 31) - 0.5).round() as u8;
             }
         }
     }
-    let floors = [Color(0xffcc_cccc), Color(0xff17_3366)];
+    let floors = FLOORS.map(Color);
+    let inks = [[40, 40, 42], [235, 235, 230], [200, 200, 196]];
     let cache = KnobCache::global();
-    println!("{:<9} {:>9} {:>9} {:>9}   (radius 72; bake and frame only for symmetric bodies)", "preset", "direct ms", "bake ms", "frame ms");
+    let rig0 = Rig { floor: floors[0], ..Rig::studio() };
+    let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+    println!("{:<9} {:>9} {:>9} {:>9}   (radius 72: direct render, bake, mean frame per new angle)", "preset", "direct ms", "bake ms", "frame ms");
+    let mut worst = 0.0f64;
     for (row, code) in PRESETS.iter().enumerate() {
         let model = preset(code).unwrap();
         let accent = Color(match *code {
@@ -95,39 +174,45 @@ fn main() {
             "wing" => 0xffc8_3228,
             _ => 0xffe0_a020u32,
         });
-        let rig = Rig { floor: floors[0], ..Rig::studio() };
-        let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
         let t = Instant::now();
-        let direct = render(&model, &rig, 72.0, ANGLES[1], accent);
+        let direct = render(&model, &rig0, 72.0, ANGLES[0], accent);
         let direct_ms = ms(t);
-        let (mut bake_ms, mut frame_ms) = (f64::NAN, f64::NAN);
-        if let Some(bake) = KnobBake::new(&model, &rig, 72.0, accent) {
-            let t = Instant::now();
-            bake.warm();
-            bake_ms = ms(t);
-            for i in 0..16 {
-                bake.frame(i as f32 * 0.0123); // touch every knurl phase once
-            }
-            let t = Instant::now();
-            let n = 16;
-            let mut sum = 0u32;
-            for i in 0..n {
-                sum = sum.wrapping_add(bake.frame(i as f32 * 0.0123).px[direct.px.len() / 2]);
-            }
-            frame_ms = ms(t) / n as f64;
-            assert!(sum != 1);
+        let bake = KnobBake::new(&model, &rig0, 72.0, accent).unwrap();
+        let t = Instant::now();
+        bake.warm();
+        let bake_ms = ms(t);
+        let t = Instant::now();
+        let n = 24;
+        let mut sum = 0u32;
+        for i in 0..n {
+            sum = sum.wrapping_add(bake.frame(-2.4 + i as f32 * 0.2).px[direct.px.len() / 2]);
         }
+        let frame_ms = ms(t) / n as f64;
+        assert!(sum != 1);
+        worst = worst.max(frame_ms);
         println!("{code:<9} {direct_ms:>9.1} {bake_ms:>9.1} {frame_ms:>9.2}");
-        let cy = (row * ROW + ROW / 2 - 8) as i32;
-        for (half, floor) in floors.iter().enumerate() {
-            for (si, radius) in [72.0f32, 30.0].iter().enumerate() {
-                for (ai, angle) in ANGLES.iter().enumerate() {
-                    let s = cache.get(&model, &rig, *radius, *angle, accent, *floor);
-                    let cx = if si == 0 { 120 + ai as i32 * 220 } else { 700 + ai as i32 * 95 } + (half * HALF) as i32;
-                    let ink = if half == 0 { [40, 40, 42] } else { [235, 235, 230] };
-                    dots(&mut img, w, cx, cy, *radius, ink);
-                    blit(&mut img, w, h, &s, cx, cy);
-                }
+        let cy = (row * ROW + ROW / 2 - 6) as i32;
+        for (ci, floor) in floors.iter().enumerate() {
+            // one large, two medium, three small
+            let spots: [(f32, i32); 6] = [(64.0, 92), (40.0, 240), (40.0, 345), (26.0, 440), (26.0, 510), (26.0, 580)];
+            for (k, (radius, x)) in spots.iter().enumerate() {
+                let s = cache.get(&model, &rig0, *radius, ANGLES[k], accent, *floor);
+                let cx = x + (ci * COL) as i32;
+                dots(&mut img, w, h, cx, cy, *radius, inks[ci]);
+                blit(&mut img, w, h, &s, cx, cy);
+            }
+        }
+    }
+    println!("slowest frame: {worst:.2} ms");
+    for (extra, models) in [materials(), modifiers()].iter().enumerate() {
+        let cy = ((PRESETS.len() + extra) * ROW + ROW / 2 - 4) as i32;
+        let n = models.len() as i32;
+        let radius = if n > 8 { 30.0 } else { 34.0 };
+        for (ci, floor) in floors.iter().enumerate() {
+            for (k, model) in models.iter().enumerate() {
+                let s = cache.get(model, &rig0, radius, ANGLES[k % 3], Color(0xffe0_a020), *floor);
+                let cx = (COL as i32 * (2 * k as i32 + 1)) / (2 * n) + (ci * COL) as i32;
+                blit(&mut img, w, h, &s, cx, cy);
             }
         }
     }

@@ -84,6 +84,7 @@ pub fn find_style(name: &str) -> Option<&'static StyleInfo> {
             "satin" | "spun" => "Mtl", "bakelite" => "Bk", "gloss" => "Rd",
             "strip" => "Brit", "collet" => "Dbl", "chicken" => "Chk",
             "wing" => "A", "ivory" => "Ivr", "chrome" => "Chr", "phenolic" => "Snk",
+            "wood" => "Wd", "brass" => "Brz", "dome" => "Dm", "dual" => "Dbl",
             _ => code,
         }
     } else { code };

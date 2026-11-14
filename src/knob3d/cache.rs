@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use super::bake::KnobBake;
 use super::model::{KnobModel, Rig, Sprite};
 use super::presets::preset;
-use super::render::render;
+use super::shade::Lights;
 use crate::color::Color;
 
 /// Angle steps across the knob sweep of ±0.8π.
@@ -17,12 +17,12 @@ const DEFAULT_BYTES: usize = 64 << 20;
 const MAX_BAKES: usize = 24;
 
 type SpriteKey = (u64, u64, u32, i32, u32);
-type BakeKey = (u64, u64, u32, u32);
+type BakeKey = (u64, u32, u32);
 
 #[derive(Default)]
 struct Inner {
     sprites: HashMap<SpriteKey, (Arc<Sprite>, u64)>,
-    bakes: HashMap<BakeKey, (Option<Arc<KnobBake>>, u64)>,
+    bakes: HashMap<BakeKey, (Arc<KnobBake>, u64)>,
     bytes: usize,
     tick: u64,
 }
@@ -69,7 +69,8 @@ impl KnobCache {
         let r2 = (radius * 2.0) as u32;
         let aq = (angle / (SWEEP / ANGLE_STEPS as f32)).round() as i32;
         let key: SpriteKey = (mf, rf, r2, aq, accent.0);
-        let bkey: BakeKey = (mf, rf, r2, accent.0);
+        // the bake holds no lighting, so one serves every panel colour
+        let bkey: BakeKey = (mf, r2, accent.0);
         let bake = {
             let mut g = self.inner.lock().unwrap();
             g.tick += 1;
@@ -83,15 +84,12 @@ impl KnobCache {
                     g.bakes.remove(&old);
                 }
             }
-            let e = g.bakes.entry(bkey).or_insert_with(|| (KnobBake::new(model, &rig, radius, accent).map(Arc::new), tick));
+            let e = g.bakes.entry(bkey).or_insert_with(|| (Arc::new(KnobBake::build(model, &rig, radius, accent)), tick));
             e.1 = tick;
             e.0.clone()
         };
         // render outside the lock
-        let sprite = Arc::new(match &bake {
-            Some(b) => b.frame(angle),
-            None => render(model, &rig, radius, angle, accent),
-        });
+        let sprite = Arc::new(bake.frame_lit(&Lights::new(&rig), angle));
         let mut g = self.inner.lock().unwrap();
         let tick = g.tick;
         if let Some(e) = g.sprites.get(&key) {
@@ -99,7 +97,14 @@ impl KnobCache {
         }
         g.bytes += sprite_bytes(&sprite);
         g.sprites.insert(key, (sprite.clone(), tick));
-        let bake_bytes: usize = g.bakes.values().filter_map(|b| b.0.as_ref()).map(|b| b.bytes()).sum();
+        // bakes are the bulk of the memory: keep them to half the budget, oldest out first
+        let mut bake_bytes: usize = g.bakes.values().map(|b| b.0.bytes()).sum();
+        while bake_bytes > self.cap / 2 && g.bakes.len() > 1 {
+            let Some(old) = g.bakes.iter().filter(|e| *e.0 != bkey).min_by_key(|e| e.1 .1).map(|e| *e.0) else { break };
+            if let Some((b, _)) = g.bakes.remove(&old) {
+                bake_bytes -= b.bytes();
+            }
+        }
         while g.bytes + bake_bytes > self.cap && g.sprites.len() > 1 {
             let Some(old) = g.sprites.iter().filter(|e| *e.0 != key).min_by_key(|e| e.1 .1).map(|e| *e.0) else { break };
             if let Some((s, _)) = g.sprites.remove(&old) {

@@ -18,7 +18,7 @@ mod vec;
 
 pub use bake::KnobBake;
 pub use cache::{KnobCache, ANGLE_STEPS};
-pub use model::{Angular, AngularKind, KnobModel, Material, Pointer, PointerKind, Rig, Segment, Shape, Sprite};
+pub use model::{Angular, AngularKind, Insert, KnobModel, Material, Part, Plan, Pointer, PointerKind, Rig, Segment, SetScrew, Shape, Sprite};
 pub use presets::{preset, PRESETS};
 pub use render::render;
 
@@ -97,26 +97,52 @@ mod tests {
         assert!(n < 12 && bytes <= 60_000, "{n} sprites, {bytes} bytes");
     }
 
+    /// Mean of the largest channel difference per pixel, and the count of pixels off by
+    /// more than 24.
+    fn diff(a: &Sprite, b: &Sprite) -> (f64, usize) {
+        assert_eq!((a.w, a.h, a.origin), (b.w, b.h, b.origin));
+        let (mut sum, mut big) = (0u64, 0usize);
+        for (p, q) in a.px.iter().zip(&b.px) {
+            let d = (0..4).map(|c| ((p >> (c * 8) & 0xff) as i32 - (q >> (c * 8) & 0xff) as i32).unsigned_abs()).max().unwrap();
+            sum += d as u64;
+            big += (d > 24) as usize;
+        }
+        (sum as f64 / a.px.len() as f64, big)
+    }
+
+    /// The cap-space buffer against the analytic field it was sampled from, same angle,
+    /// same sampling pattern: this isolates what baking costs. Round, scalloped, fluted,
+    /// bar-shaped and two-tier bodies all go through the bake.
     #[test]
     fn baked_frame_matches_direct_render() {
         let (rig, acc) = (Rig::studio(), Color(0xffff_9a1f));
-        for code in ["satin", "strip", "phenolic"] {
+        for code in PRESETS {
             let model = preset(code).unwrap();
-            let bake = KnobBake::new(&model, &rig, 20.0, acc).expect("symmetric");
+            let bake = KnobBake::new(&model, &rig, 20.0, acc).expect("every model bakes");
             for angle in [-2.0f32, 0.4] {
-                let (a, b) = (bake.frame(angle), render(&model, &rig, 20.0, angle, acc));
-                assert_eq!((a.w, a.h, a.origin), (b.w, b.h, b.origin));
-                let (mut sum, mut big) = (0u64, 0usize);
-                for (p, q) in a.px.iter().zip(&b.px) {
-                    let d = (0..4).map(|c| ((p >> (c * 8) & 0xff) as i32 - (q >> (c * 8) & 0xff) as i32).unsigned_abs()).max().unwrap();
-                    sum += d as u64;
-                    big += (d > 24) as usize;
-                }
-                let mean = sum as f64 / a.px.len() as f64;
-                assert!(mean < 0.5 && big * 200 < a.px.len(), "{code} {angle}: mean {mean}, {big} outliers");
+                let (mean, big) = diff(&bake.frame(angle), &bake.frame_unbaked(angle));
+                println!("{code} {angle}: mean {mean:.3}, {big} outliers");
+                assert!(mean < 0.5 && big * 200 < (bake.frame(angle).px.len()), "{code} {angle}: mean {mean}, {big} outliers");
             }
         }
-        assert!(KnobBake::new(&preset("bakelite").unwrap(), &rig, 20.0, acc).is_none());
+    }
+
+    /// A frame (4 samples per pixel from the bake) against the public reference render (16
+    /// jittered samples from the model). The gap is mostly sampling noise on mirror
+    /// reflections and knurling, so the bound is looser.
+    #[test]
+    fn baked_frame_close_to_reference_render() {
+        let (rig, acc) = (Rig::studio(), Color(0xffff_9a1f));
+        for code in PRESETS {
+            let model = preset(code).unwrap();
+            let bake = KnobBake::new(&model, &rig, 20.0, acc).unwrap();
+            for angle in [-2.0f32, 0.4] {
+                let a = bake.frame(angle);
+                let (mean, big) = diff(&a, &render(&model, &rig, 20.0, angle, acc));
+                println!("{code} {angle}: mean {mean:.3}, {big} outliers");
+                assert!(mean < 1.6 && big * 40 < a.px.len(), "{code} {angle}: mean {mean}, {big} outliers");
+            }
+        }
     }
 
     #[test]
