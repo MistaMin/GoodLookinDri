@@ -75,7 +75,7 @@ content through `Ui::kind_mut(id)`. See `hello/src/bin/widgets.rs` for a complet
 ## Known limits
 
 - The rasteriser is simple and not fast on large, busy scenes. Dirty regions and cached plates are
-  in the 0.3 milestone. The `Text` widget re-wraps its text every frame.
+  in the 0.4 milestone. The `Text` widget re-wraps its text every frame.
 - Keys are limited to the six in `Key`. Letters, digits and text entry are not done.
 - DPI is system-wide on Windows. Per-monitor DPI on Windows 8.1 and later is not done.
 - The golden frame is not compared with the GoodLookinUI gallery images in `docs/images`. Those are
