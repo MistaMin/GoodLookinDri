@@ -10,9 +10,20 @@ This is an early implementation, not a finished framework.
 
 ## Screenshots
 
-The pictures below are the shared catalogue, rendered by the GoodLookinUI gallery. Every shape is generated in code. GoodLookinDri draws that same catalogue into a [`Scene`](src/scene.rs). `gallery::paint_page` lays out the six pages. A pixel diff against these images is still future work.
+Every picture below is generated in code by this crate and rendered by `goodlookindri-shell`. No bitmaps are shipped. `gallery::paint_page` draws each catalogue page; `cargo run -p goodlookindri-shell --example render_page -- <page> <out.ppm> [scale] [flat|lit]` writes one to a file.
 
-### 47 knobs
+### A complete faceplate
+`cargo run -p goodlookindri-shell --example render_demo -- <out.ppm> [silver|blue]` composes a panel from the toolkit's parts.
+
+![Demo faceplate, silver](docs/images/demo_silver.png)
+![Demo faceplate, blue](docs/images/demo_blue.png)
+
+### 47 knobs, lit
+The lit tier shades each physical knob per pixel from a height profile, materials and a fixed studio light, then caches the result as a sprite. The 35 physical styles each have a lit model; the 12 display and neon styles stay vector. Select it with a `lit_` style prefix or `draw::set_knob_mode(KnobMode::Lit)`. The classic and flat tiers are unchanged.
+
+![Lit knobs](docs/images/knobs_lit.png)
+
+### 47 knobs, classic
 ![Knobs](docs/images/knobs.png)
 
 ### 40 plates, with surface finishes

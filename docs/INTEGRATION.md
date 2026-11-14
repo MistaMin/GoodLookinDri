@@ -72,6 +72,22 @@ Replay `scene.cmds`. Each command is an ellipse, round rectangle, line, polygon,
 
 `draw::FLAT_KNOBS` selects the flat family for every knob. A style of `flat_Brit` selects it for that knob only.
 
+### Lit knobs
+
+`draw::set_knob_mode(KnobMode::Lit)` selects the lit tier for every knob, and a style of `lit_Brit` selects it for one knob. A lit knob is a per-pixel shaded sprite from `knob3d`, cached per style, size, angle and colour, and emitted as one `Cmd::Image`. Tell the crate the backing scale and the panel colour so sprites are sharp and reflect the right surface:
+
+```rust
+draw::set_knob_scale(scale);          // device pixels per logical unit, default 2
+draw::set_knob_floor(panel_colour);   // colour the knob stands on
+hardware::set_device_scale(scale);    // panel grain follows the same scale
+```
+
+Styles without a lit model, and hosts that cannot blit images, get the classic drawing.
+
+### Newer commands
+
+`Cmd` is `#[non_exhaustive]`. Besides the original shapes it carries `Fill` (multi-stop linear, radial and conic paints, feathered edges, additive blends), `Shadow`, `InnerShadow` and `Image` (premultiplied sRGB pixels). A host that matches on `Cmd` needs a `_` arm. A host that only knows the original commands can replay `scene.lower_basic()`, which rewrites the newer ones into approximations and drops images.
+
 Meters, switches, sliders, screws and the spectrum view are the same idea: pass a `Scene` and the current levels. `SpectrumView::paint` draws Standard, Multicolour, Bars, or Spectrogram from `SpectrumSettings`. `gallery::paint_page` draws one of the six catalogue pages when you want a browser inside a tool.
 
 ## Parameters
