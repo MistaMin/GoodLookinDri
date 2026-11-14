@@ -33,7 +33,8 @@ pub fn knob_named(scene: &mut Scene, style: &str, c: Point, r: f32, angle: f32, 
 }
 
 static MODE: AtomicU8 = AtomicU8::new(0);
-static SCALE: AtomicU32 = AtomicU32::new(2.0f32.to_bits());
+// 0x4000_0000 is 2.0f32.to_bits(); the const call is stable only from Rust 1.83.
+static SCALE: AtomicU32 = AtomicU32::new(0x4000_0000);
 static FLOOR: AtomicU32 = AtomicU32::new(0xff808080);
 
 /// Select the default for `knob`, updating the legacy flat flag as well.
