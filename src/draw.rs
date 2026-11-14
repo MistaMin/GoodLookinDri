@@ -57,7 +57,8 @@ pub fn set_knob_scale(scale: f32) {
 /// Panel colour used for reflected and bounced light (default mid grey).
 pub fn set_knob_floor(floor: Color) { FLOOR.store(floor.0, Ordering::Relaxed); }
 
-/// Natural shape matches only; the remaining catalogue styles retain their vector drawing.
+/// Preset behind a code: the 15 presets map to themselves. The style mappings are the
+/// older shared look; drawing uses [`crate::knob3d::style_model`] for catalogue styles.
 pub fn lit_preset_for(code: &str) -> Option<&'static str> {
     if let Some(code) = crate::knob3d::PRESETS.iter().find(|&&p| p == code) { return Some(*code); }
     Some(match code {
@@ -73,6 +74,59 @@ pub fn lit_preset_for(code: &str) -> Option<&'static str> {
         "Dbl" => "collet",
         _ => return None,
     })
+}
+
+/// Sprite of a lit knob: a preset by its own code, else the model of the catalogue style.
+fn lit_sprite(code: &str, r: f32, angle: f32, accent: Color) -> Option<Arc<Sprite>> {
+    let scale = f32::from_bits(SCALE.load(Ordering::Relaxed));
+    let floor = Color(FLOOR.load(Ordering::Relaxed));
+    let (cache, rig) = (KnobCache::global(), Rig::studio());
+    if crate::knob3d::PRESETS.contains(&code) {
+        return cache.get_preset(code, &rig, r * scale, angle, accent, floor);
+    }
+    if let Some(model) = crate::knob3d::style_model(code) {
+        return Some(cache.get(&model, &rig, r * scale, angle, accent, floor));
+    }
+    cache.get_preset(lit_preset_for(code)?, &rig, r * scale, angle, accent, floor)
+}
+
+/// Printed scale of a lit knob, as on the classic drawing of the style.
+#[derive(Clone, Copy, PartialEq)]
+enum LitScale { None, Dots(usize), Ticks }
+
+fn lit_scale(code: &str) -> LitScale {
+    match code {
+        "Brit" | "console" | "Snk" => LitScale::Ticks,
+        "N" | "A" | "Mic" | "Slv" | "ivory" | "Chr" | "Wnt" => LitScale::Dots(21),
+        "FS" | "Mtl" | "metal" | "Rd" | "Ptr" | "Dm" | "Lvr" | "Tab" | "Skt" | "Fat" | "Chk" | "Mini" => LitScale::Dots(11),
+        _ if crate::knob3d::PRESETS.contains(&code) => LitScale::Dots(11),
+        _ => LitScale::None,
+    }
+}
+
+/// One weight for every style: fine dots or hairline ticks just outside the skirt.
+fn draw_lit_scale(scene: &mut Scene, code: &str, c: Point, r: f32, dark_marks: bool) {
+    let ink = if dark_marks { Color(0xff252a2d) } else { Color(0xffc7ccce) };
+    let at = |a: f32, d: f32| Point::new(c.x + a.sin() * d, c.y - a.cos() * d);
+    let sweep = |i: usize, n: usize| (-0.8 + 1.6 * i as f32 / (n - 1) as f32) * std::f32::consts::PI;
+    match lit_scale(code) {
+        LitScale::None => {}
+        LitScale::Dots(n) => {
+            let d = (r * 0.045).max(1.0);
+            for i in 0..n {
+                let p = at(sweep(i, n), r * 1.12);
+                scene.fill_ellipse_solid(Rect::new(p.x - d * 0.5, p.y - d * 0.5, d, d), ink);
+            }
+        }
+        LitScale::Ticks => {
+            let w = (r * 0.025).clamp(0.6, 1.1);
+            for i in 0..13 {
+                let major = i % 3 == 0;
+                let a = sweep(i, 13);
+                scene.line(at(a, r * 1.08), at(a, r * if major { 1.20 } else { 1.14 }), ink, if major { w } else { w * 0.7 });
+            }
+        }
+    }
 }
 
 // Retaining the sprite prevents address reuse. Copy pixels only on a cache miss.
@@ -113,17 +167,14 @@ pub fn knob_named_mode(scene: &mut Scene, style: &str, c: Point, r: f32, angle: 
         return;
     }
     if mode == KnobMode::Lit {
-        if let Some(preset) = lit_preset_for(code) {
+        if let Some(sprite) = lit_sprite(code, r, angle, accent) {
             let scale = f32::from_bits(SCALE.load(Ordering::Relaxed));
-            let floor = Color(FLOOR.load(Ordering::Relaxed));
-            if let Some(sprite) = KnobCache::global().get_preset(preset, &Rig::studio(), r * scale, angle, accent, floor) {
-                crate::hardware::draw_scale_ring(scene, c, r * 1.08, 9, 0, &[]);
-                let img = sprite_image(&sprite);
-                let dest = Rect::new(c.x - sprite.origin.0 / scale, c.y - sprite.origin.1 / scale,
-                    sprite.w as f32 / scale, sprite.h as f32 / scale);
-                scene.image(&img, dest, 1.0);
-                return;
-            }
+            draw_lit_scale(scene, code, c, r, dark_marks);
+            let img = sprite_image(&sprite);
+            let dest = Rect::new(c.x - sprite.origin.0 / scale, c.y - sprite.origin.1 / scale,
+                sprite.w as f32 / scale, sprite.h as f32 / scale);
+            scene.image(&img, dest, 1.0);
+            return;
         }
     }
     knobs::draw_style(scene, code, c, r, angle, accent, dark_marks);

@@ -14,6 +14,7 @@ mod model;
 mod presets;
 mod render;
 mod shade;
+mod styles;
 mod vec;
 
 pub use bake::KnobBake;
@@ -21,6 +22,7 @@ pub use cache::{KnobCache, ANGLE_STEPS};
 pub use model::{Angular, AngularKind, Insert, KnobModel, Material, Part, Plan, Pointer, PointerKind, Rig, Segment, SetScrew, Shape, Sprite};
 pub use presets::{preset, PRESETS};
 pub use render::render;
+pub use styles::{style_model, STYLE_CODES};
 
 #[cfg(test)]
 mod tests {

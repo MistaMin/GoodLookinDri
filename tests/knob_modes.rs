@@ -34,7 +34,7 @@ fn prefixes_roundtrip_and_validate() {
 fn lit_catalogue_and_fallback() {
     assert!(gallery::every_style_draws_mode(KnobMode::Lit));
     for style in KNOB_STYLES {
-        if draw::lit_preset_for(style.code).is_none() {
+        if knob3d::style_model(style.code).is_none() {
             assert_eq!(drawing(style.code, KnobMode::Lit).cmds, drawing(style.code, KnobMode::Classic).cmds);
         }
     }
@@ -50,11 +50,39 @@ fn lit_image_identity_and_placement() {
     }).collect();
     assert_eq!(images.len(), 1);
     let (img, dest, opacity) = images[0];
-    let sprite = knob3d::KnobCache::global().get_preset("spun", &knob3d::Rig::studio(), 36.0, 0.4, Color(0xffc96f4a), Color(0xff808080)).unwrap();
+    let sprite = knob3d::KnobCache::global().get(&knob3d::style_model("Mtl").unwrap(), &knob3d::Rig::studio(), 36.0, 0.4, Color(0xffc96f4a), Color(0xff808080));
     assert_eq!(dest.w, img.w as f32 / 2.0);
     assert_eq!(dest.h, img.h as f32 / 2.0);
     assert_eq!(dest.x + sprite.origin.0 / 2.0, 60.0);
     assert_eq!(dest.y + sprite.origin.1 / 2.0, 60.0);
     assert_eq!(*opacity, 1.0);
     assert_eq!(drawing("flat_Mtl", KnobMode::Lit).cmds, drawing("Mtl", KnobMode::Flat).cmds);
+}
+
+#[test]
+fn every_physical_style_has_its_own_lit_model() {
+    let displays = ["Seg", "Vfd", "Cyb", "Arc", "Brg", "Neo", "Hex", "Yel", "Glw", "Grd", "Dsh", "Led"];
+    assert_eq!(knob3d::STYLE_CODES.len() + displays.len(), KNOB_STYLES.len());
+    for code in displays {
+        assert!(find_style(code).is_some(), "{code}");
+        assert!(knob3d::style_model(code).is_none(), "{code}");
+    }
+    let sprites: Vec<_> = knob3d::STYLE_CODES.iter().map(|code| {
+        assert!(find_style(code).is_some(), "{code}");
+        let model = knob3d::style_model(code).unwrap_or_else(|| panic!("{code} has no lit model"));
+        knob3d::render(&model, &knob3d::Rig::studio(), 40.0, 0.4, Color(0xffc96f4a))
+    }).collect();
+    for i in 0..sprites.len() {
+        for j in 0..i {
+            assert!(sprites[i].px != sprites[j].px, "{} and {} look the same", knob3d::STYLE_CODES[i], knob3d::STYLE_CODES[j]);
+        }
+    }
+    for style in KNOB_STYLES {
+        if !style.legacy.is_empty() {
+            assert_eq!(knob3d::style_model(style.legacy), knob3d::style_model(style.code), "{}", style.legacy);
+        }
+        // every catalogue entry is either a physical style with a model or a display
+        assert_eq!(knob3d::style_model(style.code).is_some(), !displays.contains(&style.code), "{}", style.code);
+    }
+    assert!(drawing("Wd", KnobMode::Lit).cmds.iter().any(|c| matches!(c, Cmd::Image { .. })));
 }
