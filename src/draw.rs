@@ -1,10 +1,15 @@
-//! Entry points a host calls. `flat_` and the global flat flag select the legacy vector knobs.
+//! Host entry points for flat, classic vector and per-pixel lit knobs.
 
 use crate::color::Color;
 use crate::design::{self, Item};
+pub use crate::design::KnobMode;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
+use crate::knob3d::{KnobCache, Rig, Sprite};
 use crate::knobs;
 use crate::knobs_flat;
-use crate::scene::{Point, Rect, Scene};
+use crate::scene::{Image, Point, Rect, Scene};
 
 pub use crate::hardware::use_dark_marks;
 
@@ -18,17 +23,110 @@ pub fn knob(scene: &mut Scene, bounds: Rect, proportion: f64, item: &Item, activ
     let a = ((proportion.clamp(0.0, 1.0) as f32) * 1.6 - 0.8) * std::f32::consts::PI;
     let accent = Color::from_hex(&item.colour).unwrap_or(Color(0xff697170));
     let accent = if active { accent } else { Color(0xff697170) };
-    let flat = item.style == "flat" || item.style.starts_with("flat_") || FLAT_KNOBS.load(std::sync::atomic::Ordering::Relaxed);
-    let code = item.style.strip_prefix("flat_").unwrap_or(item.style.as_str());
-    let code = if code == "flat" { "Brit" } else { code };
-    if flat { knobs_flat::draw_style_flat(scene, code, c, r, a, accent, dark_marks); }
-    else { knobs::draw_style(scene, code, c, r, a, accent, dark_marks); }
+    knob_named_mode(scene, &item.style, c, r, a, accent, dark_marks, knob_mode());
 }
 
+/// Compatibility wrapper: false selects classic, true selects flat; prefixes override it.
 pub fn knob_named(scene: &mut Scene, style: &str, c: Point, r: f32, angle: f32, accent: Color, dark_marks: bool, flat: bool) {
-    let code = style.strip_prefix("flat_").unwrap_or(style);
-    if flat || style.starts_with("flat_") { knobs_flat::draw_style_flat(scene, code, c, r, angle, accent, dark_marks); }
-    else { knobs::draw_style(scene, code, c, r, angle, accent, dark_marks); }
+    knob_named_mode(scene, style, c, r, angle, accent, dark_marks,
+        if flat { KnobMode::Flat } else { KnobMode::Classic });
+}
+
+static MODE: AtomicU8 = AtomicU8::new(0);
+static SCALE: AtomicU32 = AtomicU32::new(2.0f32.to_bits());
+static FLOOR: AtomicU32 = AtomicU32::new(0xff808080);
+
+/// Select the default for `knob`, updating the legacy flat flag as well.
+pub fn set_knob_mode(mode: KnobMode) {
+    MODE.store(if mode == KnobMode::Lit { 1 } else { 0 }, Ordering::Relaxed);
+    FLAT_KNOBS.store(mode == KnobMode::Flat, Ordering::Relaxed);
+}
+
+/// Direct writes to FLAT_KNOBS still override the default tier.
+pub fn knob_mode() -> KnobMode {
+    if FLAT_KNOBS.load(Ordering::Relaxed) { KnobMode::Flat }
+    else if MODE.load(Ordering::Relaxed) == 1 { KnobMode::Lit }
+    else { KnobMode::Classic }
+}
+
+/// Device pixels per logical unit (default 2). Invalid scales are ignored.
+pub fn set_knob_scale(scale: f32) {
+    if scale.is_finite() && scale > 0.0 { SCALE.store(scale.to_bits(), Ordering::Relaxed); }
+}
+
+/// Panel colour used for reflected and bounced light (default mid grey).
+pub fn set_knob_floor(floor: Color) { FLOOR.store(floor.0, Ordering::Relaxed); }
+
+/// Natural shape matches only; the remaining catalogue styles retain their vector drawing.
+pub fn lit_preset_for(code: &str) -> Option<&'static str> {
+    if let Some(code) = crate::knob3d::PRESETS.iter().find(|&&p| p == code) { return Some(*code); }
+    Some(match code {
+        "Mtl" | "metal" | "Knl" | "Rck" => "spun",
+        "Bk" | "Pie" => "bakelite",
+        "Chk" | "Ptr" | "Tab" => "chicken",
+        "A" => "wing",
+        "Brit" | "console" | "N" | "FS" => "strip",
+        "Rd" => "gloss",
+        "Chr" | "Slv" => "chrome",
+        "Ivr" => "ivory",
+        "Snk" | "Skt" | "Tl" | "Fat" | "Mini" => "phenolic",
+        "Dbl" => "collet",
+        _ => return None,
+    })
+}
+
+// Retaining the sprite prevents address reuse. Copy pixels only on a cache miss.
+// LRU bounds both the entry count and retained pixel memory (sprite + image).
+#[derive(Default)]
+struct Images {
+    entries: HashMap<usize, (Arc<Sprite>, Arc<Image>, u64)>,
+    tick: u64,
+    bytes: usize,
+}
+fn sprite_image(sprite: &Arc<Sprite>) -> Arc<Image> {
+    static IMAGES: OnceLock<Mutex<Images>> = OnceLock::new();
+    let mut cache = IMAGES.get_or_init(|| Mutex::new(Images::default())).lock().unwrap();
+    cache.tick += 1;
+    let tick = cache.tick;
+    let key = Arc::as_ptr(sprite) as usize;
+    if let Some(entry) = cache.entries.get_mut(&key) {
+        entry.2 = tick;
+        return entry.1.clone();
+    }
+    let img = Arc::new(Image::new(sprite.w, sprite.h, sprite.px.clone()));
+    cache.bytes += sprite.px.len() * 8;
+    cache.entries.insert(key, (sprite.clone(), img.clone(), tick));
+    while cache.entries.len() > 128 || (cache.bytes > 32 << 20 && cache.entries.len() > 1) {
+        let old = *cache.entries.iter().min_by_key(|(_, e)| e.2).unwrap().0;
+        let entry = cache.entries.remove(&old).unwrap();
+        cache.bytes -= entry.0.px.len() * 8;
+    }
+    img
+}
+
+/// Draw in a chosen tier; explicit style prefixes take precedence.
+pub fn knob_named_mode(scene: &mut Scene, style: &str, c: Point, r: f32, angle: f32, accent: Color, dark_marks: bool, mode: KnobMode) {
+    let (explicit, code) = design::parse_style(style);
+    let mode = if explicit == KnobMode::Classic { mode } else { explicit };
+    if mode == KnobMode::Flat {
+        knobs_flat::draw_style_flat(scene, code, c, r, angle, accent, dark_marks);
+        return;
+    }
+    if mode == KnobMode::Lit {
+        if let Some(preset) = lit_preset_for(code) {
+            let scale = f32::from_bits(SCALE.load(Ordering::Relaxed));
+            let floor = Color(FLOOR.load(Ordering::Relaxed));
+            if let Some(sprite) = KnobCache::global().get_preset(preset, &Rig::studio(), r * scale, angle, accent, floor) {
+                crate::hardware::draw_scale_ring(scene, c, r * 1.08, 9, 0, &[]);
+                let img = sprite_image(&sprite);
+                let dest = Rect::new(c.x - sprite.origin.0 / scale, c.y - sprite.origin.1 / scale,
+                    sprite.w as f32 / scale, sprite.h as f32 / scale);
+                scene.image(&img, dest, 1.0);
+                return;
+            }
+        }
+    }
+    knobs::draw_style(scene, code, c, r, angle, accent, dark_marks);
 }
 
 pub fn style_count() -> usize { design::KNOB_STYLES.len() }

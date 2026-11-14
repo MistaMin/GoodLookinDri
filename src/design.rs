@@ -4,6 +4,18 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
+/// Rendering tier; it does not add entries to the style catalogue.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum KnobMode { Flat, Classic, Lit }
+
+/// Explicit prefixes override the caller's mode. Bare `flat` is the legacy Brit alias.
+pub fn parse_style(code: &str) -> (KnobMode, &str) {
+    if let Some(code) = code.strip_prefix("flat_") { (KnobMode::Flat, code) }
+    else if let Some(code) = code.strip_prefix("lit_") { (KnobMode::Lit, code) }
+    else if code == "flat" { (KnobMode::Flat, "Brit") }
+    else { (KnobMode::Classic, code) }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum KnobStyle { 
     Brit, N, A, FS, Mtl, Wd, Bk, Pie, Snk, Slv, Rd, Ptr, Dm, Sq, Seg, Vfd, Cyb, Fat, Pag, Lvr, Tab, Wh, Knl, Skt, Rib, Chr, Arc, Brg, Neo, Hex, Yel, Key, Brz, Chk, Ivr, Mpl, Led, Dbl, Mini, Tl, Glw, Grd, Dsh, Mic, Ebn, Wnt, Rck
@@ -65,10 +77,19 @@ pub static KNOB_STYLES: &[StyleInfo] = &[
 
 
 pub fn find_style(name: &str) -> Option<&'static StyleInfo> {
-    let code = if let Some(rest) = name.strip_prefix("flat_") { rest } else if name == "flat" { "Brit" } else { name };
+    let (mode, code) = parse_style(name);
+    // Direct lit presets resolve to a representative catalogue entry for validation.
+    let code = if mode == KnobMode::Lit {
+        match code {
+            "satin" | "spun" => "Mtl", "bakelite" => "Bk", "gloss" => "Rd",
+            "strip" => "Brit", "collet" => "Dbl", "chicken" => "Chk",
+            "wing" => "A", "ivory" => "Ivr", "chrome" => "Chr", "phenolic" => "Snk",
+            _ => code,
+        }
+    } else { code };
     KNOB_STYLES.iter().find(|s| s.code == code || (!s.legacy.is_empty() && s.legacy == code))
 }
-pub fn is_flat_style(name: &str) -> bool { name == "flat" || name.starts_with("flat_") }
+pub fn is_flat_style(name: &str) -> bool { parse_style(name).0 == KnobMode::Flat }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Faceplate {

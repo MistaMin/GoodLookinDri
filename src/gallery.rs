@@ -1,8 +1,8 @@
 //! Catalogue of every part, matching the six gallery pages. No window: the host paints the scene.
 
 use crate::color::Color;
-use crate::design::{self, FACEPLATES, KNOB_STYLES};
-use crate::draw::knob_named;
+use crate::design::{self, KnobMode, FACEPLATES, KNOB_STYLES};
+use crate::draw::knob_named_mode;
 use crate::hardware::{draw_panel, draw_screw};
 use crate::meters::{self, FaderCap, VuFace};
 use crate::retro::{self, Icon, SliderStyle};
@@ -13,14 +13,25 @@ use crate::switches::{self, PushStyle, RockerStyle, ToggleStyle};
 pub const PAGE_NAMES: [&str; 6] = ["Knobs", "Plates", "Meters", "Sliders", "Switches & lamps", "Spectrum"];
 
 pub fn paint_page(scene: &mut Scene, page: usize, flat: bool, glow: bool) {
+    paint_page_mode(scene, page, if flat { KnobMode::Flat } else { KnobMode::Classic }, glow);
+}
+
+pub fn paint_page_mode(scene: &mut Scene, page: usize, mode: KnobMode, glow: bool) {
     match page {
         0 => {
             for (i, s) in KNOB_STYLES.iter().enumerate() {
                 let col = (i % 8) as f32;
                 let row = (i / 8) as f32;
                 let c = Point::new(70.0 + col * 150.0, 70.0 + row * 120.0);
-                knob_named(scene, s.code, c, 36.0, 0.4, Color(0xffc96f4a), false, flat);
+                knob_named_mode(scene, s.code, c, 36.0, 0.4, Color(0xffc96f4a), false, mode);
                 scene.text(Point::new(c.x, c.y + 48.0), s.code, Color(0xffdde1d5), 11.0, true);
+            }
+            if mode == KnobMode::Lit {
+                for (i, &code) in crate::knob3d::PRESETS.iter().enumerate() {
+                    let c = Point::new(60.0 + i as f32 * 113.0, 790.0);
+                    knob_named_mode(scene, code, c, 32.0, 0.4, Color(0xffc96f4a), false, mode);
+                    scene.text(Point::new(c.x, c.y + 48.0), code, Color(0xffdde1d5), 11.0, true);
+                }
             }
         }
         1 => {
@@ -124,9 +135,13 @@ fn paint_spectrum_page(scene: &mut Scene) {
 }
 
 pub fn every_style_draws(flat: bool) -> bool {
+    every_style_draws_mode(if flat { KnobMode::Flat } else { KnobMode::Classic })
+}
+
+pub fn every_style_draws_mode(mode: KnobMode) -> bool {
     for s in KNOB_STYLES {
         let mut scene = Scene::new();
-        knob_named(&mut scene, s.code, Point::new(40.0, 40.0), 32.0, 0.2, Color(0xffc96f4a), false, flat);
+        knob_named_mode(&mut scene, s.code, Point::new(40.0, 40.0), 32.0, 0.2, Color(0xffc96f4a), false, mode);
         if scene.cmds.is_empty() { return false; }
         let _ = design::find_style(s.code);
     }
