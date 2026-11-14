@@ -10,7 +10,7 @@ Development builds can carry an in-plugin editor. Testers change style, label, c
 
 Release users can scale the interface. They cannot edit typography or layout. The accepted design is a CSV file embedded in the plugin.
 
-GoodLookinDri is the Rust implementation of that model. [GoodLookinUI](https://github.com/MistaMin/GoodLookinUI) is the C++ implementation, with a JUCE painting adapter. Design files move between them. The plugin project chooses which one to link. The toolkit does not choose a plugin framework.
+GoodLookinDri — Dri stands for Drawn Rust Interface — is the Rust implementation of that model. [GoodLookinUI](https://github.com/MistaMin/GoodLookinUI) is the C++ implementation, with a JUCE painting adapter. Design files move between them. The plugin project chooses which one to link. The toolkit does not choose a plugin framework.
 
 Target systems are whatever the host plugin already ships: Apple Silicon and Intel macOS, Windows, and Linux. Format wrappers remain the plugin's responsibility.
 
