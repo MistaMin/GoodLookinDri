@@ -37,3 +37,6 @@ pub mod switches;
 pub mod spectrum_draw;
 pub mod draw;
 pub mod gallery;
+
+pub mod readout;
+pub mod layout;

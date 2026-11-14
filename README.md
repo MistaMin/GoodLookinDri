@@ -115,3 +115,7 @@ Existing CSV designs with the original HardwareUI header still load. Newly saved
 ## License
 
 GoodLookinDri source code and documentation are released under the [MIT License](LICENSE), copyright 2026 Marcos Quirino Deida.
+
+## Recent plugin UI additions
+
+Both toolkits now provide sample-timed loudness/crest readout aggregation, bounded readout-card layout, and caption/switch pairing. See [APIs, source audit and parity evidence](docs/PLUGIN_UI_PARITY.md).
