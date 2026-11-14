@@ -27,10 +27,14 @@ pub fn paint_page_mode(scene: &mut Scene, page: usize, mode: KnobMode, glow: boo
                 scene.text(Point::new(c.x, c.y + 48.0), s.code, Color(0xffdde1d5), 11.0, true);
             }
             if mode == KnobMode::Lit {
+                // One row across the 1280-wide page, however many presets there are.
+                let n = crate::knob3d::PRESETS.len().max(1) as f32;
+                let step = (1280.0 - 100.0) / n;
+                let radius = (step * 0.32).min(32.0);
                 for (i, &code) in crate::knob3d::PRESETS.iter().enumerate() {
-                    let c = Point::new(60.0 + i as f32 * 113.0, 790.0);
-                    knob_named_mode(scene, code, c, 32.0, 0.4, Color(0xffc96f4a), false, mode);
-                    scene.text(Point::new(c.x, c.y + 48.0), code, Color(0xffdde1d5), 11.0, true);
+                    let c = Point::new(50.0 + step * (i as f32 + 0.5), 790.0);
+                    knob_named_mode(scene, code, c, radius, 0.4, Color(0xffc96f4a), false, mode);
+                    scene.text(Point::new(c.x, c.y + radius + 16.0), code, Color(0xffdde1d5), 11.0, true);
                 }
             }
         }
