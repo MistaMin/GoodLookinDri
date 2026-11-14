@@ -31,6 +31,7 @@ pub fn run(cfg: Config, app: Box<dyn App>) -> i32 {
 /// Paints one frame without a window. `width` and `height` are logical; the buffer is
 /// `scale` times larger. Used for tests, CI and systems with no display.
 pub fn render_offscreen(app: &mut dyn App, width: u32, height: u32, scale: f32) -> Framebuffer {
+    goodlookindri::hardware::set_device_scale(scale);
     let mut scene = goodlookindri::scene::Scene::new();
     app.paint(&mut scene, width as f32, height as f32);
     let mut fb = Framebuffer::new((width as f32 * scale).round() as usize, (height as f32 * scale).round() as usize);

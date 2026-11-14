@@ -18,6 +18,7 @@ fn main() {
         Some("flat") => KnobMode::Flat, Some("lit") => KnobMode::Lit, _ => KnobMode::Classic,
     };
     draw::set_knob_scale(scale);
+    goodlookindri::hardware::set_device_scale(scale);
     draw::set_knob_floor(Color(0xff14181b));
     let mut scene = Scene::new();
     gallery::paint_page_mode(&mut scene, page, mode, true);

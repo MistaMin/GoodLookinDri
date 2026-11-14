@@ -14,6 +14,8 @@ const LUT_SPAN: f32 = 1.12;
 /// the direct render use the same estimator, so a bake only adds interpolation error.
 pub(crate) const AO_DIRS: usize = 10;
 pub(crate) const AO_ROT: f32 = 0.3;
+/// Largest convexity that is kept.
+pub(crate) const CURV: f32 = 2.0;
 
 /// Material in the form the shader wants.
 #[derive(Clone, Copy)]
@@ -37,6 +39,9 @@ pub(crate) struct Surf {
     pub bx: f32,
     pub by: f32,
     pub ao: f32,
+    /// Convexity: height above the mean of the neighbours a short step away, per unit
+    /// step. Positive on top edges and ridges (which catch light), negative in grooves.
+    pub curv: f32,
     pub mat: Mat,
 }
 
@@ -173,6 +178,7 @@ impl Layer {
                         fade = 0.03;
                     }
                     AngularKind::Flutes => fade = 0.08,
+                    AngularKind::Teeth { .. } => fade = 0.03,
                     AngularKind::Bar { .. } => {}
                 }
                 Mod { a: *a, amp, cut, fade }
@@ -237,6 +243,12 @@ impl Layer {
                         1.0
                     }
                 }
+                AngularKind::Teeth { duty } => {
+                    let d = ((phi * n / (2.0 * PI)).rem_euclid(1.0) - 0.5).abs();
+                    // d is 0.5 on a lug centre and 0 in the middle of a gap
+                    let half = 0.5 * duty.clamp(0.02, 0.98);
+                    1.0 - m.amp * ss(0.5 - half + 0.03, 0.5 - half - 0.03, d)
+                }
                 AngularKind::Bar { tip_width, tail_width, tail } => bar_radius(phi, tip_width, tail_width, tail),
             };
             out /= mixf(1.0, scale, w).max(0.04);
@@ -282,8 +294,9 @@ impl Field {
             kind: p.kind,
             r0: p.r0 * r,
             r1: p.r1 * r,
-            // never thinner than about two pixels, so small knobs keep a readable pointer
-            hw: (p.width * r * 0.5).max(if p.kind == PointerKind::Dot { 1.3 } else { 0.95 }),
+            // never thinner than about two and a half pixels, so small knobs keep a readable
+            // pointer
+            hw: (p.width * r * 0.5).max(if p.kind == PointerKind::Dot { 1.8 } else { 1.2 }),
             depth: p.depth * r,
             mat: p.material.tinted(accent),
         };
@@ -447,7 +460,12 @@ impl Field {
         let (mat, bx, by) = self.material(x, y);
         let h = self.height(x, y);
         let ao = horizon_ao(&|a, b| self.height(a, b), x, y, h, rot, self.r / 90.0, dirs);
-        Surf { gx, gy, bx, by, ao, mat }
+        // how far the surface stands above its neighbours a short step away, per unit step:
+        // zero on any plane, positive on top edges and ridges, negative in grooves
+        let d = (0.022 * self.r).max(0.8);
+        let around = self.height(x - d, y) + self.height(x + d, y) + self.height(x, y - d) + self.height(x, y + d);
+        let curv = ((4.0 * h - around) / (4.0 * d)).clamp(-CURV, CURV);
+        Surf { gx, gy, bx, by, ao, curv, mat }
     }
     pub fn floor_ao_n(&self, x: f32, y: f32, rot: f32, dirs: usize) -> f32 {
         horizon_ao(&|a, b| self.height(a, b), x, y, 0.0, rot, self.r / 90.0, dirs)

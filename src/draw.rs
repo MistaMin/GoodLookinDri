@@ -104,9 +104,28 @@ fn lit_scale(code: &str) -> LitScale {
     }
 }
 
-/// One weight for every style: fine dots or hairline ticks just outside the skirt.
+/// Where a lit knob appears to sit: lift of its silhouette centre above the base centre
+/// and the radius of the silhouette, both in knob radii. Tall knobs lean towards the top
+/// of the screen under the tilted camera, so a scale centred on the base looks off.
+fn lit_frame(code: &str) -> (f32, f32) {
+    static FRAMES: OnceLock<Mutex<HashMap<String, (f32, f32)>>> = OnceLock::new();
+    let mut frames = FRAMES.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap();
+    if let Some(f) = frames.get(code) { return *f; }
+    let model = crate::knob3d::preset(code)
+        .or_else(|| crate::knob3d::style_model(code))
+        .or_else(|| lit_preset_for(code).and_then(crate::knob3d::preset));
+    let f = model.map_or((0.0, 1.0), |m| m.visual_frame(&Rig::studio()));
+    frames.insert(code.to_string(), f);
+    f
+}
+
+/// One weight for every style: fine dots or hairline ticks just outside the skirt,
+/// centred on where the knob appears to sit.
 fn draw_lit_scale(scene: &mut Scene, code: &str, c: Point, r: f32, dark_marks: bool) {
     let ink = if dark_marks { Color(0xff252a2d) } else { Color(0xffc7ccce) };
+    let (lift, reach) = lit_frame(code);
+    let c = Point::new(c.x, c.y - lift * r);
+    let r = r * reach.max(1.0);
     let at = |a: f32, d: f32| Point::new(c.x + a.sin() * d, c.y - a.cos() * d);
     let sweep = |i: usize, n: usize| (-0.8 + 1.6 * i as f32 / (n - 1) as f32) * std::f32::consts::PI;
     match lit_scale(code) {

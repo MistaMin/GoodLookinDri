@@ -145,51 +145,94 @@ pub fn draw_rocker(scene: &mut Scene, r: Rect, on: bool, lamp: Color, style: Roc
     solid_round(g, well, 2.8, Color(0xff020303));
     g.inner_shadow(Shape::Round(well, 2.8), rig.shadow_offset(2.0), 1.5, BLACK.with_alpha(0.9));
 
-    // Paddle, with the gap to the well left dark all round.
-    // The raised end closes its gap to the well; the pressed end opens it.
-    let plate = well.reduced(1.3, 1.5).translated(0.0, if on { -0.9 } else { 0.9 });
+    // Paddle: a shallow V seesaw. The raised half stands proud of the bezel, nearly flat, and
+    // rolls over at its end, where its end wall shows; the pressed half slopes down into the
+    // well, drawn smaller with the well's walls exposed round it, in the shade of the raised
+    // half and of the bezel. Every surface is shaded from its normal, so which half is bright
+    // follows the rig.
+    let plate = well.reduced(1.3, 1.5);
     let split = plate.center().y;
     let top = Rect::new(plate.x, plate.y, plate.w, split - plate.y);
     let bottom = Rect::new(plate.x, split, plate.w, plate.bottom() - split);
-    let (raised, sunk) = if on { (top, bottom) } else { (bottom, top) };
     let body = match style {
-        RockerStyle::Classic => Color(0xff2b2d30),
+        RockerStyle::Classic => Color(0xff2f3134),
         RockerStyle::Slim => Color(0xffc6c8c3),
-        RockerStyle::Neon => Color(0xff0b1118),
-        RockerStyle::Lamp => Color(0xff303236),
+        RockerStyle::Neon => Color(0xff0e151d),
+        RockerStyle::Lamp => Color(0xff34363a),
     };
     let light = style == RockerStyle::Slim;
-    let gloss = if light { 0.08 } else { 0.22 };
-    drop_shadow(g, Shape::Round(raised, 2.0), &rig, 4.0, 0.6);
-    // Dished seesaw: slope of the face along its length, tilted toward the pressed end.
-    let tilt = if on { -0.36 } else { 0.36 };
-    let prof: Vec<(f32, Color)> = (0..6).map(|i| {
-        let u = -1.0 + 2.0 * i as f32 / 5.0;
-        let slope = tilt + 0.34 * u;
-        (i as f32 / 5.0, shade_col(&rig, body, [0.0, -slope, 1.0], gloss))
-    }).collect();
-    g.fill_round_linear(plate, 2.2, Stops::new(&prof), HALF_PI);
-    // Rounded long edges: a cylinder-like falloff across the width.
-    let edge = if light { 0.30 } else { 0.55 };
-    g.fill_round_linear(plate, 2.2, Stops::new(&[(0.0, WHITE.with_alpha(0.10)), (0.06, WHITE.with_alpha(0.0)), (0.9, BLACK.with_alpha(0.0)), (1.0, BLACK.with_alpha(edge))]), 0.0);
-    // Sheen where the dish turns toward the light.
-    let sheen_y = plate.y + plate.h * if on { 0.80 } else { 0.30 };
-    g.glow_round(box_at(plate.w - 3.0, plate.h * 0.30, Point::new(cx, sheen_y)), plate.h * 0.15, WHITE.with_alpha(if light { 0.22 } else { 0.10 }), plate.h * 0.14, Blend::Screen);
-    g.clip_round(plate, 2.2);
-    // End face of the raised half, and the lip of light or shade where it turns over.
-    let face_n = if on { [0.0, -0.85, 0.5] } else { [0.0, 0.85, 0.5] };
-    let lip = shade_col(&rig, body.brighter(0.12), face_n, 0.9);
-    let ly = if on { plate.y } else { plate.bottom() - 1.8 };
-    g.fill_rect(Rect::new(plate.x, ly, plate.w, 1.8), lip, lip, true);
-    // Hinge crease.
-    hline(g, split, plate.x, plate.right(), BLACK.with_alpha(if light { 0.35 } else { 0.6 }), 0.9);
-    hline(g, split + if on { 0.9 } else { -0.9 }, plate.x, plate.right(), WHITE.with_alpha(if light { 0.35 } else { 0.10 }), 0.6);
-    g.pop_clip();
-    // The pressed half sits below the bezel and takes its shadow.
-    g.clip_round(sunk, 0.0);
+    let gloss = if light { 0.05 } else { 0.13 };
+    // `dir`: from the pivot toward the raised end (−1 up the screen, +1 down).
+    let dir = if on { -1.0f32 } else { 1.0 };
+    let half_len = plate.h * 0.5;
+    let rise = 1.1;
+    let (raised, sunk) = if on {
+        (Rect::new(plate.x - 0.5, plate.y - rise, plate.w + 1.0, half_len + rise), Rect::new(plate.x + 0.9, split, plate.w - 1.8, half_len - 1.7))
+    } else {
+        (Rect::new(plate.x - 0.5, split, plate.w + 1.0, half_len + rise), Rect::new(plate.x + 0.9, plate.y + 1.7, plate.w - 1.8, half_len - 1.7))
+    };
+    let lit_side = rig.screen_dir().y * dir > 0.0;
+    // Gradient along a half: `slope(u)` is the rise of the surface per unit of distance from the
+    // pivot, u = 0 at the pivot and 1 at the end.
+    let along = |rect: Rect, toward: f32, col: Color, slope: &dyn Fn(f32) -> f32| -> Paint {
+        let st: Vec<(f32, Color)> = (0..6).map(|i| {
+            let p = i as f32 / 5.0;
+            let u = if toward < 0.0 { 1.0 - p } else { p };
+            let _ = rect;
+            // Slopes are exaggerated so the curvature reads at plugin sizes.
+            (p, shade_col(&rig, col, [0.0, -slope(u) * toward * 1.9, 1.0], gloss))
+        }).collect();
+        Paint::Linear { stops: Stops::new(&st), angle: HALF_PI }
+    };
+    // Pressed half first: it lies under everything else.
+    let sunk_slope = |u: f32| -0.80 + 0.55 * u * u;
+    g.fill_shape(Shape::Round(sunk, 1.6), along(sunk, -dir, body.darker(0.10), &sunk_slope), 0.0, Blend::Over);
+    g.fill_round_linear(sunk, 1.6, Stops::new(&[(0.0, WHITE.with_alpha(0.08)), (0.08, WHITE.with_alpha(0.0)), (0.88, BLACK.with_alpha(0.0)), (1.0, BLACK.with_alpha(0.5))]), 0.0);
+    // Shadow thrown across the pivot by the raised half, deeper when that half is on the lit side.
+    let pv = if lit_side { 0.62 } else { 0.34 };
+    let pv_stops = if on {
+        Stops::new(&[(0.0, BLACK.with_alpha(pv)), (0.22, BLACK.with_alpha(pv * 0.55)), (0.55, BLACK.with_alpha(0.0))])
+    } else {
+        Stops::new(&[(0.45, BLACK.with_alpha(0.0)), (0.78, BLACK.with_alpha(pv * 0.55)), (1.0, BLACK.with_alpha(pv))])
+    };
+    g.fill_shape(Shape::Round(sunk, 1.6), Paint::Linear { stops: pv_stops, angle: HALF_PI }, 0.0, Blend::Over);
+    // It sits below the bezel and takes the bezel's shadow.
+    let sunk_zone = if on { Rect::new(well.x, split, well.w, well.bottom() - split) } else { Rect::new(well.x, well.y, well.w, split - well.y) };
+    g.clip_round(sunk_zone, 0.0);
     g.inner_shadow(Shape::Round(well, 2.8), rig.shadow_offset(5.0), 2.6, BLACK.with_alpha(0.85));
-    g.fill_rect(sunk, BLACK.with_alpha(0.16), BLACK.with_alpha(0.16), true);
     g.pop_clip();
+    g.stroke_round(sunk, 1.6, BLACK.with_alpha(0.55), 0.6);
+
+    // Raised half: shadow onto the bezel, the end wall, then the face.
+    drop_shadow(g, Shape::Round(raised, 2.0), &rig, 3.5, 0.6);
+    let wall_h = 2.6;
+    let wall = if on { Rect::new(raised.x, raised.y - 0.2, raised.w, wall_h + 1.5) } else { Rect::new(raised.x, raised.bottom() - wall_h - 1.3, raised.w, wall_h + 1.5) };
+    // Side walls: the block under the face, lit on the side toward the key.
+    let wall_base = body.brighter(if light { 0.0 } else { 0.10 });
+    let side_l = shade_col(&rig, wall_base, [-0.92, 0.0, 0.38], 0.5);
+    let side_r = shade_col(&rig, wall_base, [0.92, 0.0, 0.38], 0.5);
+    g.fill_round_linear(raised, 2.0, Stops::new(&[(0.0, side_l), (0.12, side_l.mix(body, 0.5)), (0.88, side_r.mix(body, 0.5)), (1.0, side_r)]), 0.0);
+    let wall_c = shade_col(&rig, wall_base, [0.0, dir * 0.92, 0.38], 0.9);
+    g.fill_round_linear(wall, 2.0, Stops::two(wall_c.brighter(0.10), wall_c.darker(0.25)), HALF_PI);
+    let sw = 1.3;
+    let face = if on { Rect::new(raised.x + sw, raised.y + wall_h * 0.55, raised.w - sw * 2.0, raised.h - wall_h * 0.55) } else { Rect::new(raised.x + sw, raised.y, raised.w - sw * 2.0, raised.h - wall_h * 0.55) };
+    // Nearly flat, a small dip at the pivot, rolling over into the end wall.
+    let raised_slope = |u: f32| if u < 0.30 { 0.46 - 1.3 * u } else if u < 0.66 { 0.07 } else { 0.07 - 2.6 * (u - 0.66) };
+    g.fill_shape(Shape::Round(face, 1.8), along(face, dir, body, &raised_slope), 0.0, Blend::Over);
+    // Rounded long edges: a cylinder-like falloff across the width, lit edge first.
+    let edge = if light { 0.30 } else { 0.55 };
+    g.fill_round_linear(face, 1.8, Stops::new(&[(0.0, WHITE.with_alpha(0.20)), (0.07, WHITE.with_alpha(0.0)), (0.88, BLACK.with_alpha(0.0)), (1.0, BLACK.with_alpha(edge))]), 0.0);
+    // Sheen pooled on the flat of the face.
+    let sheen_y = face.y + face.h * if on { 0.52 } else { 0.48 };
+    g.glow_round(box_at(face.w - 3.0, face.h * 0.42, Point::new(cx, sheen_y)), face.h * 0.2, WHITE.with_alpha(if light { 0.20 } else { 0.085 }), face.h * 0.2, Blend::Screen);
+    g.stroke_round(face, 1.8, BLACK.with_alpha(0.5), 0.6);
+    // Crease at the pivot: a dark line, and the raised half's edge catching light beside it.
+    let crease = split;
+    hline(g, crease, plate.x - 0.3, plate.right() + 0.3, BLACK.with_alpha(if light { 0.5 } else { 0.8 }), 1.1);
+    hline(g, crease + dir * 1.0, face.x + 1.0, face.right() - 1.0, WHITE.with_alpha(if light { 0.45 } else { 0.16 }), 0.6);
+    // Edge where the face turns into the end wall.
+    let turn = if on { face.y + 0.3 } else { face.bottom() - 0.3 };
+    hline(g, turn, face.x + 1.2, face.right() - 1.2, WHITE.with_alpha(if lit_side { if light { 0.7 } else { 0.38 } } else { 0.10 }), 0.6);
 
     let ink = if light { Color(0xff222426) } else { Color(0xfff2f2ee) };
     let mark = w.min(h) * 0.15;
@@ -204,6 +247,7 @@ pub fn draw_rocker(scene: &mut Scene, r: Rect, on: bool, lamp: Color, style: Roc
             let hot = lamp.brighter(0.75);
             g.fill_round_radial(win, 1.2, Stops::new(&[(0.0, hot), (0.7, lamp), (1.0, lamp.darker(0.25))]), win.center());
             if glow {
+                g.glow_round(win.expanded(h * 0.12), h * 0.12, lamp.with_alpha(0.13), h * 0.14, Blend::Over);
                 g.glow_round(win.expanded(h * 0.22), h * 0.22, lamp.with_alpha(0.55), h * 0.24, Blend::Add);
             } else {
                 solid_round(g, win.expanded(2.0), 3.0, lamp.with_alpha(0.25));
@@ -215,8 +259,12 @@ pub fn draw_rocker(scene: &mut Scene, r: Rect, on: bool, lamp: Color, style: Roc
         }
     }
     if style == RockerStyle::Neon {
-        if on && glow { g.glow_round(plate.expanded(4.0), 6.0, lamp.with_alpha(0.16), 7.0, Blend::Add); }
-        retro::glow_round(g, plate.reduced(0.5, 0.5), 2.2, if on { lamp } else { lamp.with_alpha(0.35) }, 1.0, if on { 1.0 } else { 0.2 }, glow);
+        if on && glow {
+            g.glow_round(plate.expanded(4.0), 6.0, lamp.with_alpha(0.10), 7.0, Blend::Over);
+            g.glow_round(plate.expanded(4.0), 6.0, lamp.with_alpha(0.16), 7.0, Blend::Add);
+        }
+        // Off, the tube is dark glass (the helper draws it switched off below 0.2 of full light).
+        retro::glow_round(g, plate.reduced(0.2, 0.2), 2.2, if on { lamp } else { lamp.with_alpha(0.35) }, 1.0, if on { 1.0 } else { 0.2 }, glow);
     }
     if horizontal {
         blit(scene, tmp, &Rot::around(r.center().x, r.center().y, HALF_PI));
@@ -319,13 +367,17 @@ pub fn draw_toggle_at(scene: &mut Scene, r: Rect, pos: f32, style: ToggleStyle, 
         let perp = Point::new(-dy / seen, dx / seen);
         let side = if perp.x * ld.x + perp.y * ld.y >= 0.0 { 1.0 } else { -1.0 };
         let quad = |u0: f32, u1: f32| vec![c.add(perp.mul(w0 * u0)), tip.add(perp.mul(w1 * u0)), tip.add(perp.mul(w1 * u1)), c.add(perp.mul(w0 * u1))];
-        scene.fill_poly(quad(-1.0, 1.0), ramp.at(0.5), ramp.at(0.5));
-        let strips = 14;
-        for j in 0..strips {
-            let u0 = -1.0 + 2.0 * j as f32 / strips as f32;
-            let u1 = u0 + 2.0 / strips as f32;
-            let col = ramp.at(0.5 - 0.5 * (u0 + u1) * 0.5 * side);
-            scene.fill_poly(quad(u0 - 0.04, (u1 + 0.04).min(1.0)), col, col);
+        // The rod is a tapered cylinder: thin slices along its length, each a full multi-stop
+        // gradient across its own width, so the highlight narrows with the taper.
+        let _ = side;
+        let ang = if ld.x <= 0.0 { 0.0 } else { PI };
+        let slices = ((seen / 0.5).ceil() as usize).clamp(6, 120);
+        for j in 0..slices {
+            let (t0, t1) = (j as f32 / slices as f32, (j + 1) as f32 / slices as f32);
+            let (ya, yb) = (c.y + dy * t0, c.y + dy * t1);
+            let hw = w0 + (w1 - w0) * (t0 + t1) * 0.5;
+            let rect = Rect::new(c.x - hw, ya.min(yb) - 0.06, hw * 2.0, (ya - yb).abs() + 0.12);
+            scene.fill_shape(Shape::Round(rect, 0.0), Paint::Linear { stops: ramp, angle: ang }, 0.0, Blend::Over);
         }
         // Darker toward the socket, where the bushing and the rod's own lean shade it.
         let (near_c, far_c) = (BLACK.with_alpha(0.0), BLACK.with_alpha(if black { 0.45 } else { 0.38 }));
@@ -378,16 +430,84 @@ fn key_well(scene: &mut Scene, well: Rect, radius: f32, rig: &LightRig) {
     scene.inner_shadow(Shape::Round(well, radius), rig.shadow_offset(2.0), 1.4, BLACK.with_alpha(0.9));
 }
 
-/// Light from inside a translucent cap, then bloom over whatever surrounds it.
+/// Light from inside a translucent cap: the face falls off toward its edges, a hot near-white
+/// centre sits over the lamp, then bloom spills over whatever surrounds it. The spill is a
+/// tinted wash under the additive light, so it also shows on pale panels where adding light
+/// alone saturates to white.
 fn lamp_glow(scene: &mut Scene, shape: Shape, colour: Color, glow: bool) {
     let r = shape.rect();
     let c = r.center();
-    let hot = colour.brighter(0.5);
-    let paint = Paint::Radial { stops: Stops::new(&[(0.0, hot.with_alpha(0.85)), (0.45, hot.with_alpha(0.38)), (1.0, hot.with_alpha(0.0))]), center: c, rx: r.w * 0.52, ry: r.h * 0.72, focus: c };
+    let fall = Paint::Radial { stops: Stops::new(&[(0.0, BLACK.with_alpha(0.0)), (0.5, BLACK.with_alpha(0.08)), (1.0, BLACK.with_alpha(0.48))]), center: c, rx: r.w * 0.60, ry: r.h * 0.95, focus: c };
+    scene.fill_shape(shape, fall, 0.0, Blend::Over);
+    let warm = colour.brighter(0.45);
+    let hot = colour.mix(Color(0xfffff6e6), 0.80);
+    let paint = Paint::Radial { stops: Stops::new(&[(0.0, hot.with_alpha(0.98)), (0.30, hot.mix(warm, 0.4).with_alpha(0.82)), (0.60, warm.with_alpha(0.40)), (0.85, warm.with_alpha(0.10)), (1.0, warm.with_alpha(0.0))]), center: c, rx: r.w * 0.50, ry: r.h * 0.72, focus: c };
     scene.fill_shape(shape, paint, 0.0, Blend::Over);
-    if glow {
-        let d = r.h.min(r.w) * 0.42;
-        scene.fill_shape(shape.expanded(d), Paint::Solid(colour.with_alpha(0.40)), d * 1.25, Blend::Add);
+    if glow { spill(scene, shape, colour, 1.0); }
+}
+
+/// Bloom around a lit part: tinted wash, then additive light.
+fn spill(scene: &mut Scene, shape: Shape, colour: Color, k: f32) {
+    let r = shape.rect();
+    let d = r.h.min(r.w) * 0.42;
+    scene.fill_shape(shape.expanded(d * 0.9), Paint::Solid(colour.with_alpha(0.17 * k)), d * 1.15, Blend::Over);
+    scene.fill_shape(shape.expanded(d), Paint::Solid(colour.with_alpha(0.38 * k)), d * 1.25, Blend::Add);
+}
+
+/// A soft neutral darkening on the panel round a lit part, drawn before the part: on a pale
+/// panel it gives the bloom something to stand against; on a dark one it is all but invisible.
+fn lit_surround(scene: &mut Scene, shape: Shape) {
+    let d = shape.rect().h.min(shape.rect().w) * 0.22;
+    scene.shadow(shape.expanded(d), d * 1.1, BLACK.with_alpha(0.20));
+}
+
+/// Centred text on a lit lens or tube: the run stamped a device pixel out at low alpha as a
+/// halo, then the crisp glyphs.
+fn halo_text(scene: &mut Scene, r: Rect, text: &str, ink: Color, halo: Color, size: f32) {
+    let at = r.center();
+    let d = (1.0 / crate::hardware::device_scale()).max(0.5);
+    scene.glow_round(box_at(size * 0.55 * text.chars().count() as f32, size * 0.5, at).expanded(size * 0.6), size * 0.6, halo.with_alpha(0.16), size * 0.6, Blend::Add);
+    for (dx, dy) in [(-d, 0.0), (d, 0.0), (0.0, -d), (0.0, d)] {
+        scene.text(Point::new(at.x + dx, at.y + dy), text, halo.with_alpha(0.22), size, true);
+    }
+    scene.text(at, text, ink, size, true);
+}
+
+/// Octagon (see [`retro::chamfer`]) as a raised pad: eight bevel facets shaded from their
+/// normals between `outer` and `inner`, lit edges picked out, and the flat top graded.
+fn facet_pad(scene: &mut Scene, outer: &[Point], inner: &[Point], base: Color, top: (Color, Color), rig: &LightRig, gloss: f32) {
+    let n = outer.len().min(inner.len());
+    scene.fill_poly(outer.to_vec(), base.darker(0.4), base.darker(0.4));
+    let mut face = Vec::with_capacity(n);
+    for i in 0..n {
+        let j = (i + 1) % n;
+        let e = outer[j].sub(outer[i]);
+        let len = (e.x * e.x + e.y * e.y).sqrt().max(1e-4);
+        let (nx, ny) = (e.y / len, -e.x / len);
+        let col = shade_col(rig, base, [nx * 0.95, ny * 0.95, 0.52], gloss);
+        scene.fill_poly(vec![outer[i], outer[j], inner[j], inner[i]], col, col);
+        face.push(nx * rig.screen_dir().x + ny * rig.screen_dir().y);
+    }
+    for i in 0..n { scene.line(outer[i], inner[i], BLACK.with_alpha(0.28), 0.5); }
+    scene.fill_poly(inner.to_vec(), top.0, top.1);
+    for i in 0..n {
+        let j = (i + 1) % n;
+        // Crease between facet and top: bright where the facet faces the light, dark opposite.
+        if face[i] > 0.0 { scene.line(inner[i], inner[j], WHITE.with_alpha(0.34 * face[i]), 0.6); } else { scene.line(inner[i], inner[j], BLACK.with_alpha(0.30 * -face[i]), 0.6); }
+    }
+    scene.stroke_poly(outer.to_vec(), BLACK.with_alpha(0.7), 0.7, true);
+}
+
+/// Well for an octagonal pad: black floor, the lip away from the light catching it.
+fn facet_well(scene: &mut Scene, path: &[Point], rig: &LightRig) {
+    scene.fill_poly(path.to_vec(), Color(0xff030404), Color(0xff030404));
+    let d = rig.screen_dir();
+    for i in 0..path.len() {
+        let (p, q) = (path[i], path[(i + 1) % path.len()]);
+        let e = q.sub(p);
+        let len = (e.x * e.x + e.y * e.y).sqrt().max(1e-4);
+        let f = (e.y * d.x - e.x * d.y) / len;
+        scene.line(p, q, if f < 0.0 { WHITE.with_alpha(0.26 * -f) } else { BLACK.with_alpha(0.6 * f) }, 0.8);
     }
 }
 
@@ -395,7 +515,10 @@ fn lamp_glow(scene: &mut Scene, shape: Shape, colour: Color, glow: bool) {
 fn cap_key(scene: &mut Scene, r: Rect, text: &str, radius: f32, base: Color, ink: Color, colour: Color, lit: bool, down: bool, glow: bool, travel: f32, concave: bool) {
     let rig = LightRig::studio();
     let la = lit_angle(&rig);
+    if lit && glow { lit_surround(scene, Shape::Round(r.expanded(2.0), radius + 1.5)); }
     key_well(scene, r.expanded(2.0), radius + 1.5, &rig);
+    // Light leaking past the cap into the well.
+    if lit { scene.glow_round(r.expanded(2.0), radius + 1.5, colour.brighter(0.3).with_alpha(0.60), 2.6, Blend::Add); }
     let face = Rect::new(r.x, r.y + if down { travel * 0.75 } else { 0.0 }, r.w, r.h - travel);
     let cap = Rect::new(r.x, face.y, r.w, r.bottom() - face.y);
     drop_shadow(scene, Shape::Round(cap, radius), &rig, if down { 1.0 } else { 2.0 + travel }, if down { 0.5 } else { 0.7 });
@@ -421,8 +544,13 @@ fn cap_key(scene: &mut Scene, r: Rect, text: &str, radius: f32, base: Color, ink
     scene.glow_round(Rect::new(inner.x + 1.0, gy, inner.w - 2.0, gh), ir.min(gh * 0.5), WHITE.with_alpha(if down { 0.06 } else if lit { 0.20 } else { 0.11 }), gh * 0.45, Blend::Screen);
     scene.stroke_round(face, radius, BLACK.with_alpha(0.45), 0.6);
     if down {
-        scene.inner_shadow(Shape::Round(face, radius), rig.shadow_offset(travel + 2.0), 1.8, BLACK.with_alpha(0.55));
-        scene.fill_round(face, radius, BLACK.with_alpha(0.10), BLACK.with_alpha(0.10), true);
+        scene.inner_shadow(Shape::Round(face, radius), rig.shadow_offset(travel + 2.0), 1.8, BLACK.with_alpha(if lit { 0.30 } else { 0.55 }));
+        if !lit { scene.fill_round(face, radius, BLACK.with_alpha(0.10), BLACK.with_alpha(0.10), true); }
+    }
+    if lit {
+        // The rim of the cap is thinnest: light leaks through it as a bright line.
+        scene.stroke_round(face.reduced(0.35, 0.35), radius, colour.mix(WHITE, 0.62).with_alpha(0.80), 0.7);
+        scene.stroke_round(inner, ir, colour.mix(WHITE, 0.4).with_alpha(0.28), 0.6);
     }
     text_c(scene, face, text, ink, key_size(face));
 }
@@ -469,7 +597,10 @@ pub fn draw_push(scene: &mut Scene, r: Rect, text: &str, style: PushStyle, colou
             if lit {
                 scene.stroke_ellipse(hole.reduced(d * 0.024, d * 0.024), colour, d * 0.05);
                 scene.stroke_ellipse(hole.reduced(d * 0.024, d * 0.024), colour.brighter(0.6), d * 0.018);
-                if glow { scene.glow_ellipse(cir.expanded(d * 0.10), colour.with_alpha(0.22), d * 0.24, Blend::Add); }
+                if glow {
+                    scene.glow_ellipse(cir.expanded(d * 0.10), colour.with_alpha(0.16), d * 0.22, Blend::Over);
+                    scene.glow_ellipse(cir.expanded(d * 0.10), colour.with_alpha(0.22), d * 0.24, Blend::Add);
+                }
             } else {
                 scene.inner_shadow(Shape::Ellipse(hole), rig.shadow_offset(2.0), 1.2, BLACK.with_alpha(0.9));
             }
@@ -490,6 +621,7 @@ pub fn draw_push(scene: &mut Scene, r: Rect, text: &str, style: PushStyle, colou
         PushStyle::Dome => {
             let d = r.w.min(r.h);
             let cir = box_at(d, d, r.center()).translated(0.0, off * 0.5);
+            if lit && glow { lit_surround(scene, Shape::Ellipse(box_at(d + 6.0, d + 6.0, r.center()))); }
             dark_bezel(scene, box_at(d + 6.0, d + 6.0, r.center()), box_at(d + 1.6, d + 1.6, r.center()), &rig);
             let c = cir.center();
             if lit {
@@ -504,37 +636,78 @@ pub fn draw_push(scene: &mut Scene, r: Rect, text: &str, style: PushStyle, colou
             if down { scene.inner_shadow(Shape::Ellipse(cir), rig.shadow_offset(3.0), 1.6, BLACK.with_alpha(0.5)); }
             let gl = box_at(d * 0.50, d * 0.30, c.add(ld.mul(d * 0.25)));
             scene.glow_ellipse(gl, WHITE.with_alpha(if lit { 0.75 } else { 0.40 }), d * 0.11, Blend::Screen);
-            if lit && glow { scene.glow_ellipse(cir.expanded(d * 0.38), colour.with_alpha(0.42), d * 0.50, Blend::Add); }
+            if lit && glow {
+                scene.glow_ellipse(cir.expanded(d * 0.34), colour.with_alpha(0.17), d * 0.44, Blend::Over);
+                scene.glow_ellipse(cir.expanded(d * 0.38), colour.with_alpha(0.42), d * 0.50, Blend::Add);
+            }
             text_c(scene, cir, text, if lit { Color(0xff0f1113) } else { Color(0xffeaeae4) }, (cir.h * 0.42).min(13.0));
         }
         PushStyle::Chamfer => {
             let ch = face.h * 0.28;
-            scene.fill_poly(retro::chamfer(r.expanded(2.0), r.h * 0.28 + 1.0, false), Color(0xff050606), Color(0xff050606));
-            scene.stroke_poly(retro::chamfer(r.expanded(2.0), r.h * 0.28 + 1.0, false), WHITE.with_alpha(0.10), 0.6, true);
-            drop_shadow(scene, Shape::Round(face.reduced(1.5, 1.5), ch * 0.7), &rig, if down { 1.0 } else { 4.5 }, if down { 0.5 } else { 0.7 });
-            let base = if lit { colour.darker(0.2) } else { Color(0xff33383e) };
-            let path = retro::chamfer(face.reduced(1.0, 1.0), ch, false);
-            scene.fill_poly(path.clone(), base.brighter(0.55), base.darker(0.65));
-            let inner = face.reduced(2.6, 2.6);
-            scene.fill_poly(retro::chamfer(inner, ch * 0.86, false), base.brighter(if down { 0.02 } else { 0.16 }), base.darker(0.30));
-            if lit { lamp_glow(scene, Shape::Round(inner.reduced(1.0, 1.0), ch * 0.8), colour, glow); }
-            scene.stroke_poly(path, colour.with_alpha(if lit { 0.95 } else { 0.35 }), 1.0, true);
+            let pad = face.reduced(1.0, 1.0);
+            let approx = Shape::Round(pad, ch * 1.7);
+            if lit && glow { lit_surround(scene, Shape::Round(r.expanded(2.0), ch * 1.7 + 2.0)); }
+            facet_well(scene, &retro::chamfer(r.expanded(2.0), r.h * 0.28 + 1.0, false), &rig);
+            if lit { scene.glow_round(r.expanded(1.5), ch * 1.7, colour.brighter(0.3).with_alpha(0.45), 2.4, Blend::Add); }
+            drop_shadow(scene, approx, &rig, if down { 1.0 } else { 4.5 }, if down { 0.5 } else { 0.7 });
+            drop_shadow(scene, approx, &rig, 0.8, 0.45);
+            let base = if lit { colour.darker(0.22) } else { Color(0xff3a4047) };
+            let bev = (face.h * 0.10).clamp(1.8, 3.4);
+            let outer = retro::chamfer(pad, ch, false);
+            let inner_r = pad.reduced(bev, bev);
+            let ich = (ch - bev * 0.586).max(0.5);
+            let inner = retro::chamfer(inner_r, ich, false);
+            let k = if down { 0.02 } else { 0.14 };
+            facet_pad(scene, &outer, &inner, base, (base.brighter(k + 0.06), base.darker(0.24)), &rig, 0.9);
+            // The top is very slightly crowned: shade from the light across it.
+            let top = Shape::Round(inner_r.reduced(0.4, 0.4), ich * 1.7);
+            scene.fill_shape(top, Paint::Linear { stops: Stops::new(&[(0.0, WHITE.with_alpha(0.10)), (0.45, WHITE.with_alpha(0.0)), (1.0, BLACK.with_alpha(0.16))]), angle: la }, 0.0, Blend::Over);
+            if lit { lamp_glow(scene, top, colour, glow); }
+            let gh = inner_r.h * 0.34;
+            scene.glow_round(Rect::new(inner_r.x + ich, inner_r.y + 0.6, inner_r.w - ich * 2.0, gh), gh * 0.5, WHITE.with_alpha(if down { 0.05 } else if lit { 0.20 } else { 0.11 }), gh * 0.45, Blend::Screen);
+            // Coloured inlay line round the top.
+            let inlay = retro::chamfer(inner_r.reduced(1.3, 1.3), (ich - 0.76).max(0.3), false);
+            scene.stroke_poly(inlay, if lit { colour.mix(WHITE, 0.6).with_alpha(0.85) } else { colour.with_alpha(0.42) }, 0.8, true);
+            if down { scene.inner_shadow(top, rig.shadow_offset(3.0), 1.6, BLACK.with_alpha(0.4)); }
             text_c(scene, face, text, if lit { Color(0xff090b0d) } else { Color(0xffdbe0e2) }, key_size(face));
         }
         PushStyle::Neon => {
-            let path = retro::chamfer(face.reduced(2.0, 2.0), face.h * 0.3, false);
-            scene.fill_poly(path.clone(), Color(0xff030608), Color(0xff030608));
+            // A gloss-black pad with shallow bevels, and a neon tube laid round its top.
+            let ch = face.h * 0.3;
+            let pad = face.reduced(1.0, 1.0);
+            let approx = Shape::Round(pad, ch * 1.7);
+            if lit && glow { lit_surround(scene, Shape::Round(r.expanded(2.0), ch * 1.7 + 2.0)); }
+            drop_shadow(scene, approx, &rig, if down { 0.8 } else { 3.5 }, if down { 0.5 } else { 0.7 });
+            drop_shadow(scene, approx, &rig, 0.8, 0.5);
+            let base = Color(0xff141b22);
+            let bev = (face.h * 0.07).clamp(1.3, 2.4);
+            let outer = retro::chamfer(pad, ch, false);
+            let inner_r = pad.reduced(bev, bev);
+            let ich = (ch - bev * 0.586).max(0.5);
+            facet_pad(scene, &outer, &retro::chamfer(inner_r, ich, false), base, (Color(0xff0b1016), Color(0xff04070a)), &rig, 1.4);
+            let top = Shape::Round(inner_r.reduced(0.4, 0.4), ich * 1.7);
+            // Gloss: a reflection band across the upper part of the acrylic.
+            scene.fill_shape(top, Paint::Linear { stops: Stops::new(&[(0.0, WHITE.with_alpha(0.10)), (0.30, WHITE.with_alpha(0.03)), (0.42, WHITE.with_alpha(0.0)), (1.0, WHITE.with_alpha(0.0))]), angle: la }, 0.0, Blend::Screen);
+            let tube = retro::chamfer(inner_r.reduced(1.8, 1.8), (ich - 1.05).max(0.3), false);
             if lit {
-                scene.fill_poly(path.clone(), colour.with_alpha(0.16), colour.with_alpha(0.16));
-                if glow { scene.glow_round(face.expanded(5.0), face.h * 0.3 + 5.0, colour.with_alpha(0.22), 10.0, Blend::Add); }
+                // The tube lights the acrylic inside it, strongest near the tube.
+                let c = inner_r.center();
+                let wash = Paint::Radial { stops: Stops::new(&[(0.0, colour.with_alpha(0.10)), (0.6, colour.with_alpha(0.20)), (1.0, colour.with_alpha(0.42))]), center: c, rx: inner_r.w * 0.55, ry: inner_r.h * 0.62, focus: c };
+                scene.fill_shape(Shape::Round(inner_r.reduced(1.8, 1.8), ich * 1.7), wash, 0.0, Blend::Over);
+                if glow { spill(scene, approx, colour, 0.75); }
             }
-            retro::glow_stroke(scene, &path, if lit { colour } else { colour.with_alpha(0.4) }, 1.3, if lit { 1.0 } else { 0.15 }, glow, true);
-            let ink = if lit { colour.brighter(0.85) } else { colour.with_alpha(0.6) };
-            text_c(scene, face, text, ink, key_size(face));
+            retro::glow_stroke(scene, &tube, if lit { colour } else { colour.with_alpha(0.4) }, 1.4, if lit { 1.0 } else { 0.15 }, glow, true);
+            if down { scene.inner_shadow(top, rig.shadow_offset(3.0), 1.6, BLACK.with_alpha(0.45)); }
+            if lit {
+                halo_text(scene, face, text, colour.brighter(0.85), colour, key_size(face));
+            } else {
+                text_c(scene, face, text, colour.darker(0.35).mix(Color(0xff8a949c), 0.35), key_size(face));
+            }
         }
         PushStyle::Arcade => {
             let d = r.w.min(r.h);
             let cir = box_at(d, d, r.center());
+            if lit && glow { lit_surround(scene, Shape::Ellipse(cir.expanded(2.0))); }
             dark_bezel(scene, cir.expanded(2.0), cir.reduced(d * 0.08, d * 0.08), &rig);
             let cap = cir.reduced(d * 0.12, d * 0.12).translated(0.0, off * 0.7);
             let cc = cap.center();

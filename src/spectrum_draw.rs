@@ -198,7 +198,10 @@ pub fn spectrogram_image(settings: &SpectrumSettings, rows: &[u8], columns: usiz
     let nv = visible_columns(n, f_min, f_max, sample_rate);
     let mut lut = [0u32; 256];
     let shade = settings.spectrogram_map == MAP_SHADE;
-    if !shade { for (v, l) in lut.iter_mut().enumerate() { *l = colour_map(settings.spectrogram_map, v as u8); } }
+    // Levels go through a contrast curve first, so quiet detail lifts out of the black and loud
+    // partials reach the bright end of the ramp.
+    let curve: Vec<u8> = (0..256).map(|v| level_curve(v as u8)).collect();
+    if !shade { for (v, l) in lut.iter_mut().enumerate() { *l = colour_map(settings.spectrogram_map, curve[v]); } }
     let base: Vec<u32> = if shade {
         (0..n).map(|c| {
             let t = (c as f32 + 0.5) / n as f32;
@@ -210,10 +213,18 @@ pub fn spectrogram_image(settings: &SpectrumSettings, rows: &[u8], columns: usiz
         let src = &rows[r * n..(r + 1) * n];
         let dst = &mut px[r * n..(r + 1) * n];
         for c in 0..nv {
-            dst[c] = if shade { shade_colour(base[c], src[c]) } else { lut[src[c] as usize] };
+            dst[c] = if shade { shade_colour(base[c], curve[src[c] as usize]) } else { lut[src[c] as usize] };
         }
     }
     Some(Arc::new(Image::new(n as u32, nrows as u32, px)))
+}
+
+/// Contrast curve for spectrogram levels: a mild gamma lift and an S-curve, 0 and 255 fixed.
+pub fn level_curve(v: u8) -> u8 {
+    let u = (v as f32 / 255.0).powf(0.82);
+    let t = ((u - 0.04) / 0.92).clamp(0.0, 1.0);
+    let sc = t * t * (3.0 - 2.0 * t);
+    ((u + (sc - u) * 0.7).clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
 fn visible_columns(n: usize, f_min: f32, f_max: f32, sample_rate: f64) -> usize {
@@ -354,7 +365,7 @@ impl SpectrumView {
         if settings.grid {
             scene.clip_round(plot, if settings.frame { SCREEN_RADIUS } else { 0.0 });
             grid_lines(scene, plot, f_min, f_max, true, 1.0);
-            if settings.labels { grid_labels(scene, plot, f_min, f_max, true); }
+            if settings.labels { grid_labels(scene, plot, f_min, f_max, true, 0.5); }
             scene.pop_clip();
         }
     }
@@ -396,7 +407,15 @@ fn paint_core(scene: &mut Scene, plot: Rect, st: &SpectrumSettings, columns: &[f
         SpectrumStyle::Bars => paint_bars(scene, plot, st, columns, hold, nv, f_min, f_max),
         SpectrumStyle::Standard | SpectrumStyle::Multicolour => paint_trace(scene, plot, st, columns, hold, nv, f_min, f_max),
     }
-    if st.grid && st.labels { grid_labels(scene, plot, f_min, f_max, !is_gram); }
+    if st.grid && st.labels {
+        let bars = st.style == SpectrumStyle::Bars;
+        if bars {
+            // The bars run to the floor: lay a dark band over their feet so the labels read.
+            let band = Rect::new(plot.x, plot.bottom() - 17.0, plot.w, 17.0);
+            scene.fill_shape(Shape::Round(band, 0.0), Paint::Linear { stops: Stops::new(&[(0.0, Color(0x00000000)), (0.45, Color(0xa0030506)), (1.0, Color(0xd2030506))]), angle: FRAC_PI_2 }, 0.0, Blend::Over);
+        }
+        grid_labels(scene, plot, f_min, f_max, !is_gram, if bars || is_gram { 0.82 } else { 0.5 });
+    }
     scene.pop_clip();
     if st.frame { screen_front(scene, plot); }
 }
@@ -489,10 +508,10 @@ fn grid_lines(scene: &mut Scene, plot: Rect, f_min: f32, f_max: f32, db: bool, g
     }
 }
 
-fn grid_labels(scene: &mut Scene, plot: Rect, f_min: f32, f_max: f32, db: bool) {
+fn grid_labels(scene: &mut Scene, plot: Rect, f_min: f32, f_max: f32, db: bool, ink_alpha: f32) {
     if plot.w < 120.0 || plot.h < 48.0 { return; }
     let size = if plot.h >= 260.0 && plot.w >= 520.0 { 8.5 } else { 7.0 };
-    let ink = GRID_INK.with_alpha(0.5);
+    let ink = GRID_INK.with_alpha(ink_alpha);
     let y = plot.bottom() - size * 0.5 - 2.5;
     let mut last_end = f32::MIN;
     for f in GRID_FREQS {
@@ -508,10 +527,17 @@ fn grid_labels(scene: &mut Scene, plot: Rect, f_min: f32, f_max: f32, db: bool) 
     if db {
         let step = db_step(plot);
         let mut v = DB_TOP - step;
-        while v > DB_BOTTOM + 0.5 {
+        // The line nearest the floor is left unlabelled: a quiet trace rests there and would run
+        // through the numeral. The others sit on a small dark chip so a trace passing behind
+        // them never cuts the figures.
+        while v > DB_BOTTOM + step * 1.25 {
             let ly = (plot.bottom() - y_norm(v) * plot.h).round() - size * 0.5 - 1.0;
             if ly > plot.y + size && ly < y - size {
-                scene.text(Point::new(plot.right() - size * 1.35 - 2.0, ly), format!("{}", v as i32), ink.with_alpha(0.42), size, true);
+                let text = format!("{}", v as i32);
+                let at = Point::new(plot.right() - size * 1.35 - 2.0, ly);
+                let chip = Rect::new(at.x - text.len() as f32 * size * 0.29 - 2.0, at.y - size * 0.55 - 0.5, text.len() as f32 * size * 0.58 + 4.0, size * 1.1 + 1.0);
+                scene.fill_round(chip, 2.0, Color(0x73050809), Color(0x73050809), true);
+                scene.text(at, text, GRID_INK.with_alpha((ink_alpha * 0.9).max(0.42)), size, true);
             }
             v -= step;
         }

@@ -7,7 +7,7 @@
 
 use std::sync::OnceLock;
 
-use super::field::{Decal, Field, Mat, Surf, Surface, AO_DIRS, AO_ROT};
+use super::field::{Decal, Field, Mat, Surf, Surface, AO_DIRS, AO_ROT, CURV};
 use super::model::{KnobModel, Rig, Sprite};
 use super::render::{render_surface, Quality};
 use super::shade::Lights;
@@ -15,8 +15,8 @@ use super::vec::v3;
 use crate::color::Color;
 
 /// Byte channels of a cell: diffuse rgb and f0 rgb (square-root coded), roughness,
-/// anisotropy, coat, sheen, translucency, bump x and y, occlusion.
-const CH: usize = 14;
+/// anisotropy, coat, sheen, translucency, bump x and y, occlusion, curvature.
+const CH: usize = 15;
 /// Bump values are stored over +-BUMP.
 const BUMP: f32 = 0.8;
 
@@ -76,7 +76,7 @@ impl Grid {
         let n = (2.0 * half * k).ceil() as usize + 2;
         let mut h = vec![0.0f32; n * n];
         par_rows(&mut h, n, |i, j| field.height(i as f32 / k - half, j as f32 / k - half));
-        let blank = Cell { gx: 0.0, gy: 0.0, b: [0, 0, 0, 0, 0, 0, 128, 0, 0, 0, 0, 127, 127, 255] };
+        let blank = Cell { gx: 0.0, gy: 0.0, b: [0, 0, 0, 0, 0, 0, 128, 0, 0, 0, 0, 127, 127, 255, 127] };
         let mut cells = vec![blank; n * n];
         let lim = (half + 1.0) * (half + 1.0);
         par_rows(&mut cells, n, |i, j| {
@@ -92,7 +92,7 @@ impl Grid {
             Cell {
                 gx: s.gx,
                 gy: s.gy,
-                b: [sq(m.diff.x), sq(m.diff.y), sq(m.diff.z), sq(m.f0.x), sq(m.f0.y), sq(m.f0.z), q8(m.rough), q8(m.aniso), q8(m.coat), q8(m.sheen), q8(m.trans), bump(s.bx), bump(s.by), q8(s.ao)],
+                b: [sq(m.diff.x), sq(m.diff.y), sq(m.diff.z), sq(m.f0.x), sq(m.f0.y), sq(m.f0.z), q8(m.rough), q8(m.aniso), q8(m.coat), q8(m.sheen), q8(m.trans), bump(s.bx), bump(s.by), q8(s.ao), ((s.curv / (2.0 * CURV)).clamp(-0.5, 0.5) * 254.0 + 127.5) as u8],
             }
         });
         let fk = (36.0 / r).clamp(0.5, 2.0);
@@ -162,6 +162,7 @@ impl Surface for Grid {
             }
         } else {
             o[13] = 1.0;
+            o[14] = 127.0 / 255.0;
         }
         let bump = |v: f32| (v * 255.0 - 127.0) / 254.0 * 2.0 * BUMP;
         Surf {
@@ -170,6 +171,7 @@ impl Surface for Grid {
             bx: bump(o[11]),
             by: bump(o[12]),
             ao: o[13],
+            curv: (o[14] * 255.0 - 127.0) / 254.0 * 2.0 * CURV,
             mat: Mat { diff: v3(o[0] * o[0], o[1] * o[1], o[2] * o[2]), f0: v3(o[3] * o[3], o[4] * o[4], o[5] * o[5]), rough: o[6], aniso: o[7], coat: o[8], sheen: o[9], trans: o[10] },
         }
     }

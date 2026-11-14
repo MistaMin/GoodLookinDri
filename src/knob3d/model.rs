@@ -135,11 +135,16 @@ impl Material {
     }
     /// Deep glossy black moulding compound.
     pub fn black_gloss() -> Self {
-        Self::plastic(0.035, 0.034, 0.033, 0.5).with_coat(0.9)
+        Self::plastic(0.055, 0.054, 0.053, 0.5).with_coat(0.9)
+    }
+    /// Polished black moulding compound for skirted and pointer knobs: nearly no haze
+    /// under the lacquer, so the black stays deep between crisp reflections.
+    pub fn black_polished() -> Self {
+        Self { f0: 0.02, ..Self::plastic(0.07, 0.07, 0.072, 0.34) }.with_coat(0.85).with_grain(0.02)
     }
     /// Matte to eggshell black plastic.
     pub fn black_matte() -> Self {
-        Self::plastic(0.075, 0.075, 0.08, 0.5)
+        Self::plastic(0.13, 0.13, 0.135, 0.5)
     }
     /// Glossy coloured plastic that light travels through.
     pub fn translucent(r: f32, g: f32, b: f32) -> Self {
@@ -217,6 +222,9 @@ pub enum AngularKind {
     Flutes,
     /// Circular cuts between rounded lobes.
     Scallops,
+    /// Flat-topped lugs with flat gaps between them, one lug centred on the pointer.
+    /// `duty` is the share of the pitch a lug takes, 0..1.
+    Teeth { duty: f32 },
     /// Asymmetric plan shape: the profile is squeezed into a tapered bar that points along
     /// the knob's zero direction. The tip sits at the full radius, the tail at `tail`
     /// behind the axis; widths are half-widths. All in fractions of the radius.
@@ -248,6 +256,11 @@ impl Angular {
     /// Scalloped lobes from `r_in` outwards; a lobe is centred on the pointer.
     pub fn scallops(count: u32, depth: f32, r_in: f32) -> Self {
         Self { kind: AngularKind::Scallops, count, depth, r_in, r_out: 1.0 }
+    }
+    /// `count` square lugs that stand `depth` proud of the gaps; `duty` is their share of
+    /// the pitch.
+    pub fn teeth(count: u32, depth: f32, duty: f32, r_in: f32) -> Self {
+        Self { kind: AngularKind::Teeth { duty }, count, depth, r_in, r_out: 1.0 }
     }
 }
 
@@ -500,6 +513,37 @@ impl KnobModel {
     pub fn with_height(mut self, height: f32) -> Self {
         self.height = height;
         self
+    }
+    /// Where the knob appears to sit under the rig's tilted camera, in units of the knob
+    /// radius: how far the centre of its silhouette lies above the base centre, and the
+    /// radius of the circle around that point that encloses the silhouette. A printed
+    /// scale drawn around this circle looks centred on tall knobs too.
+    pub fn visual_frame(&self, rig: &Rig) -> (f32, f32) {
+        let t = rig.tilt.tan() * self.height;
+        let (mut up, mut down, mut wide) = (0.0f32, 0.0f32, 0.0f32);
+        let mut point = |r: f32, h: f32| {
+            up = up.max(r + h * t);
+            down = down.max(r - h * t);
+            wide = wide.max(r);
+        };
+        for s in self.profile.iter().chain(self.under.iter()) {
+            point(s.r0, s.h0);
+            point(s.r1, if s.shape == Shape::Flat { s.h0 } else { s.h1 });
+        }
+        for p in &self.parts {
+            let top = p.profile.iter().map(|s| s.h0.max(s.h1)).fold(0.0, f32::max);
+            match p.plan {
+                // a bar turns with the knob: take the circle its tip sweeps, half way up
+                Plan::Bar { tip, .. } => point(tip, 0.5 * top),
+                _ => {
+                    for s in &p.profile {
+                        point(s.r0, s.h0);
+                        point(s.r1, if s.shape == Shape::Flat { s.h0 } else { s.h1 });
+                    }
+                }
+            }
+        }
+        (0.5 * (up - down), wide.max(0.5 * (up + down)))
     }
     /// Stable-within-process identity of the model for cache keys.
     pub(crate) fn fingerprint(&self) -> u64 {

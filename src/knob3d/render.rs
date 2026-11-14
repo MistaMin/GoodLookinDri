@@ -187,7 +187,7 @@ impl<S: Surface> Ctx<'_, S> {
         let fv = 0.2 + 0.8 * ss(0.0, 0.9 * self.r, z);
         // the softboxes are close: the side of the knob nearer the key is a little brighter
         let near = 1.0 + 0.07 * ((hy - 0.6 * hx) / self.r).clamp(-1.2, 1.2);
-        Some(shade(self.l, n, v, v3(hx / rr, hy / rr, 0.0), &m, ao, sh, fv) * near)
+        Some(shade(self.l, n, v, v3(hx / rr, hy / rr, 0.0), &m, ao, sh, fv, s.curv) * near)
     }
 
     /// Shadow alpha on the bare panel at a panel point.

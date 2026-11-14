@@ -11,6 +11,7 @@ fn main() {
     let a: Vec<String> = std::env::args().collect();
     let out = a.get(1).cloned().unwrap_or_else(|| "hardware.ppm".into());
     let scale: f32 = a.get(2).and_then(|s| s.parse().ok()).unwrap_or(2.0);
+    set_device_scale(scale);
     let mut sc = Scene::new();
     let rig = LightRig::studio();
 
@@ -33,7 +34,7 @@ fn main() {
         let r = Rect::new(16.0 + (i % 6) as f32 * 208.0, 16.0 + (i / 6) as f32 * 136.0, 196.0, 124.0);
         draw_panel(&mut sc, r, Color(*t), Color(*b), *f);
         let ink = if Color(*t).perceived_brightness() > 0.55 { Color(0xff1b1f21) } else { Color(0xffffffff) };
-        legend_text(&mut sc, Legend::Silk(ink), Point::new(r.x + 12.0, r.y + 14.0), name, 12.0, false);
+        legend_text(&mut sc, Legend::Silk(ink), Point::new(r.x + if *f == FINISH_NEON_EDGE { 18.0 } else { 12.0 }, r.y + match *f { FINISH_HAZARD => 22.0, FINISH_NEON_EDGE => 20.0, _ => 14.0 }), name, 12.0, false);
     }
 
     // Row 2: a rack unit, silver brushed with ears, screws, scale rings and legends.
@@ -60,7 +61,7 @@ fn main() {
     draw_panel(&mut sc, dark, Color(0xff2a418a), Color(0xff1d2f66), FINISH_POWDER);
     draw_corner_screws(&mut sc, dark, ScrewHead::Slot);
     let eng = Legend::Engraved(Color(0xffe8e4d8));
-    legend_text(&mut sc, eng, Point::new(dark.x + 30.0, dark.y + 40.0), "MODEL  ONE", 20.0, false);
+    legend_text_on(&mut sc, eng, Color(0xff2a418a), Point::new(dark.x + 30.0, dark.y + 40.0), "MODEL  ONE", 20.0, false);
     legend_text(&mut sc, Legend::Silk(Color(0xffffffff)), Point::new(dark.x + 30.0, dark.y + 70.0), "OPTICAL   COMPRESSOR", 11.0, false);
     let c = Point::new(dark.x + 330.0, dark.y + 130.0);
     sc.fill_ellipse_radial(Scene::ellipse_at(c, 28.0), goodlookindri::scene::Stops::two(Color(0xff3a3d40), Color(0xff050505)), Point::new(c.x - 8.0, c.y - 12.0));
@@ -91,6 +92,12 @@ fn main() {
     draw_legend_line(&mut sc, Color(0xffe8e4d8), strip.x + 420.0, strip.x + 800.0, strip.y + 40.0, "OUTPUT", 11.0);
     draw_panel(&mut sc, Rect::new(strip.x + 840.0, strip.y + 14.0, 180.0, 92.0), Color(0xffe8c820), Color(0xffcaa913), FINISH_HAMMERTONE);
     draw_panel(&mut sc, Rect::new(strip.x + 1030.0, strip.y + 14.0, 150.0, 92.0), Color(0xffb4b8bb), Color(0xff9a9ea2), FINISH_ANODISED);
+
+    // Engraved legends on a pale and a mid-tone plate.
+    let (yel, grey) = (Rect::new(strip.x + 840.0, strip.y + 14.0, 180.0, 92.0), Rect::new(strip.x + 1030.0, strip.y + 14.0, 150.0, 92.0));
+    legend_text_on(&mut sc, Legend::Engraved(Color(0xff2a2410)), Color(0xffd9b91a), yel.center(), "CAUTION", 16.0, true);
+    legend_text_on(&mut sc, Legend::Engraved(Color(0xff2b2f33)), Color(0xffa7abae), Point::new(grey.center().x, grey.center().y - 12.0), "THRESHOLD", 12.0, true);
+    legend_text_on(&mut sc, Legend::Engraved(Color(0xffa7abae).darker(0.25)), Color(0xffa7abae), Point::new(grey.center().x, grey.center().y + 14.0), "UNFILLED", 12.0, true);
 
     eprintln!("{} commands", sc.cmds.len());
     let mut fb = Framebuffer::new((1280.0 * scale) as usize, (720.0 * scale) as usize);

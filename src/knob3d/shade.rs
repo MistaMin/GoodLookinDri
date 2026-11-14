@@ -41,6 +41,8 @@ pub(crate) struct Lights {
     floor_refl: V3,
     /// Strength of the grazing rim light, already scaled for the panel brightness.
     rim_gain: f32,
+    /// Strength of the two low front kickers that draw the satin band on walls.
+    kick_gain: f32,
     env: Arc<EnvMaps>,
 }
 
@@ -61,6 +63,7 @@ impl Lights {
         // walls on a black panel
         let floor_refl = floor * 0.60 + grey(0.035) + grey(0.035 * rig.rim) * (1.0 - lum).powi(3);
         let rim_gain = 0.17 * rig.rim * (0.22 + 0.78 * (1.0 - lum.sqrt()).max(0.0).powi(2));
+        let kick_gain = rig.rim * (0.38 + 0.62 * (1.0 - lum.sqrt()).max(0.0).powi(2));
         let fp = rig.env_fingerprint();
         let env = {
             let mut g = ENVS.lock().unwrap();
@@ -76,7 +79,7 @@ impl Lights {
                 }
             }
         };
-        Lights { rig: *rig, key: v3(-ce * sa, ce * ca, se), view: view_of(rig), floor, floor_refl, rim_gain, env }
+        Lights { rig: *rig, key: v3(-ce * sa, ce * ca, se), view: view_of(rig), floor, floor_refl, rim_gain, kick_gain, env }
     }
 
     /// Environment in direction `d` blurred for `rough`: (key softbox, room, panel).
@@ -128,7 +131,7 @@ fn env(rig: &Rig, key_dir: V3, view: V3, d: V3, rough: f32) -> [f32; 5] {
     other += v3(1.25, 1.22, 1.16) * (fill * e);
     // low warm kicker from the bottom, grazing
     let kick = softbox(d, norm(v3(-0.35, -0.85, 0.3)), v3(1.0, 0.0, 0.0), 0.5, 0.10, blur);
-    other += v3(0.55, 0.47, 0.38) * (kick * e);
+    other += v3(1.0, 0.90, 0.78) * (kick * e);
     // two tall edge lights, left and right, standing on the table: they draw the long
     // streaks down cone skirts and the bright lines on shoulders and lobes
     let edge_l = softbox(d, norm(v3(-0.90, 0.30, 0.30)), v3(0.0, 0.0, 1.0), 0.50, 0.055, blur);
@@ -238,8 +241,10 @@ fn schlick_r(f0: V3, c: f32, rough: f32) -> V3 {
 }
 
 /// Shade one surface point. `v` points to the camera, `t` runs across the lathe grooves,
-/// `fv` says how much of the lit panel a mirror at this point can see (little near the foot).
-pub(crate) fn shade(l: &Lights, n: V3, v: V3, t: V3, m: &Mat, ao: f32, sh: f32, fv: f32) -> V3 {
+/// `fv` says how much of the lit panel a mirror at this point can see (little near the foot),
+/// `curv` is the convexity of the surface (positive on edges and ridges).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn shade(l: &Lights, n: V3, v: V3, t: V3, m: &Mat, ao: f32, sh: f32, fv: f32, curv: f32) -> V3 {
     let nv = dot(n, v).max(1e-3);
     // the softbox maps hold the key at one exposure; rough paint needs its broad highlight
     // lifted to read at all, rough metal needs it held back or every satin face clips
@@ -291,7 +296,7 @@ pub(crate) fn shade(l: &Lights, n: V3, v: V3, t: V3, m: &Mat, ao: f32, sh: f32, 
         let (k, o, fl) = l.look(r, 0.03 + 0.15 * (1.0 - m.coat));
         // lacquer is a mirror: it shows the lights at their real (far brighter) level and
         // the dim room hardly at all, which is what makes black gloss read as black
-        col = col * (1.0 - fc) + (KEY * (k * 5.0 * sh) + (o * (grey(0.3) + o * 1.4) + fl * (0.5 * fv)) * spec_ao) * fc;
+        col = col * (1.0 - fc) + (KEY * (k * 5.0 * sh) + (o * (grey(0.22) + o * 2.1) + fl * (0.5 * fv)) * spec_ao) * fc;
     }
     // rim light: grazes whatever turns away from the eye towards the sides and the back, so
     // rounded edges and dome flanks get the thin light line that outlines dark knobs
@@ -300,5 +305,34 @@ pub(crate) fn shade(l: &Lights, n: V3, v: V3, t: V3, m: &Mat, ao: f32, sh: f32, 
         let gloss = m.coat.max(1.0 - m.rough);
         col += v3(0.86, 0.90, 1.0) * (l.rim_gain * w * (0.55 + 0.45 * gloss) * ao);
     }
+    // kickers: two low strip lights in front, left and right of the camera. A vertical wall
+    // mirrors only the panel, so on a dark panel these are what give it a satin band and
+    // make flutes and knurling glint.
+    let gloss = m.coat.max(1.0 - m.rough).clamp(0.0, 1.0);
+    if l.kick_gain > 0.0 {
+        let p = mixf(5.0, 30.0, gloss * gloss);
+        let dl = dot(n, KICK_L).max(0.0);
+        let dr = dot(n, KICK_R).max(0.0);
+        let lobe = v3(1.0, 0.98, 0.94) * dl.powf(p) + v3(0.86, 0.92, 1.0) * (dr.powf(p) * 0.8);
+        // paint and plastic take the band at a fixed strength, bare metal by its own colour
+        let fk = lerp3(grey(0.05 + 0.10 * gloss + 0.05 * m.sheen), m.f0 * 0.16, metal);
+        let wide = (m.diff + grey(0.004)) * ((dl * dl + dr * dr * 0.8) * 0.7);
+        col += (lobe * fk + wide) * (l.kick_gain * (0.35 + 0.65 * ao) * mixf(0.55, 1.0, sh));
+    }
+    // a convex edge or ridge is a tiny mirror that fans out over half the room, so it always
+    // finds a light: the crisp line along a top edge, the glint on each knurl ridge and each
+    // lobe. Grooves get the opposite, a little extra darkness.
+    if curv > 0.0 {
+        let k = ss(0.05, 0.55, curv);
+        let facing = 0.42 + 0.58 * clamp01(0.5 + 0.5 * dot(n, l.key)) * mixf(0.5, 1.0, sh);
+        let fe = lerp3(grey(0.13 + 0.20 * gloss), m.f0 * 0.55, metal) + m.diff * 0.35;
+        col += v3(1.0, 0.99, 0.97) * fe * (k * facing * (0.4 + 0.6 * ao) * (0.45 + 0.55 * l.kick_gain.min(1.0)));
+    } else {
+        col = col * (1.0 - 0.4 * ss(0.05, 0.6, -curv));
+    }
     col
 }
+
+/// Directions towards the two front kickers.
+const KICK_L: V3 = v3(-0.800, -0.555, 0.228);
+const KICK_R: V3 = v3(0.853, -0.452, 0.261);

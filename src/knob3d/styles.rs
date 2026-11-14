@@ -117,23 +117,25 @@ fn n() -> KnobModel {
     .with_mark(Pointer::line(0.74, 0.95, 0.05, Material::ink()))
 }
 
-/// Flared silver crown with a pointer fin and a large flat matte cap in the accent colour.
+/// Die-cast silver winged pointer, low and flared: a long pointing fin on a waisted crown
+/// with a large flat matte cap in the accent colour let into the top.
 fn a() -> KnobModel {
     let cast = Material::die_cast();
     let fin = Part::new(
-        vec![seg(Flat, 0.0, 0.94, 0.66, 0.66, cast), seg(Line, 0.94, 0.98, 0.66, 0.58, cast), seg(Line, 0.98, 1.0, 0.58, 0.04, cast)],
-        Plan::Bar { tip: 1.0, tail: 0.50, tip_width: 0.14, tail_width: 0.30, rounding: 0.06 },
+        vec![seg(Flat, 0.0, 0.92, 0.60, 0.60, cast), seg(Line, 0.92, 0.975, 0.60, 0.50, cast), seg(Line, 0.975, 1.0, 0.50, 0.05, cast)],
+        Plan::Bar { tip: 1.0, tail: 0.0, tip_width: 0.10, tail_width: 0.32, rounding: 0.07 },
     );
     KnobModel::new(vec![
-        seg(Flat, 0.0, 0.58, 0.98, 0.98, cast),
-        seg(Line, 0.58, 0.62, 0.98, 0.93, cast),
-        seg(Fillet, 0.62, 0.78, 0.93, 0.12, cast),
-        seg(Dome, 0.78, 0.82, 0.12, 0.02, cast),
+        seg(Flat, 0.0, 0.53, 0.64, 0.64, cast),
+        seg(Line, 0.53, 0.56, 0.64, 0.61, cast),
+        seg(Line, 0.56, 0.585, 0.61, 0.28, cast),
+        seg(Fillet, 0.585, 0.68, 0.28, 0.10, cast),
+        seg(Dome, 0.68, 0.71, 0.10, 0.02, cast),
     ])
     .with_part(fin)
-    .with_insert(0.52, 0.025, accent_matte())
-    .with_edge(0.014)
-    .with_pointer(Pointer::line(0.72, 0.975, 0.05, white()))
+    .with_insert(0.48, 0.035, accent_matte())
+    .with_edge(0.012)
+    .with_pointer(Pointer::line(0.64, 0.96, 0.04, Material::ink()))
 }
 
 /// Wide pale-grey skirt with a glossy cap in the accent colour; the black index runs
@@ -171,33 +173,37 @@ fn mtl() -> KnobModel {
     .with_pointer(Pointer::groove(0.20, 0.74, 0.055, 0.012, Material::ink()))
 }
 
-/// Turned mid-brown wooden knob with a lathe groove and a pale inlaid index.
+/// Turned mid-brown wooden knob: slightly dished flat top with a crisp edge, a lathe
+/// groove round the wall, satin lacquer and a pale inlaid index.
 fn wd() -> KnobModel {
-    let wood = Material::wood(0.62, 0.40, 0.22).with_coat(0.2).with_roughness(0.7);
+    let wood = Material::wood(0.60, 0.38, 0.20).with_coat(0.22).with_roughness(0.62);
     KnobModel::new(vec![
-        seg(Dome, 0.0, 0.70, 0.70, 0.68, wood),
-        seg(Flat, 0.70, 0.72, 0.665, 0.665, wood),
-        seg(Dome, 0.72, 0.88, 0.68, 0.58, wood),
-        seg(Line, 0.88, 0.935, 0.58, 0.10, wood),
-        seg(Dome, 0.935, 0.955, 0.10, 0.02, wood),
+        seg(Dome, 0.0, 0.70, 0.69, 0.715, wood),
+        seg(Line, 0.70, 0.78, 0.715, 0.66, wood),
+        seg(Line, 0.78, 0.82, 0.66, 0.44, wood),
+        seg(Flat, 0.82, 0.835, 0.40, 0.40, wood),
+        seg(Dome, 0.835, 0.87, 0.44, 0.38, wood),
+        seg(Line, 0.87, 0.92, 0.38, 0.08, wood),
+        seg(Dome, 0.92, 0.95, 0.08, 0.02, wood),
     ])
-    .with_edge(0.02)
-    .with_pointer(Pointer::line(0.24, 0.88, 0.06, Material::plastic(0.92, 0.86, 0.70, 0.5).with_coat(0.85)))
+    .with_edge(0.012)
+    .with_pointer(Pointer::line(0.14, 0.77, 0.08, Material::plastic(0.95, 0.90, 0.76, 0.5).with_coat(0.5)))
 }
 
-/// Black bakelite: a domed hub drawn out into a teardrop pointer, over a ribbed base.
+/// Black bakelite teardrop: a domed hub drawn out into a long pointer nose with a white
+/// line along its crest, over a ribbed base ring.
 fn bk() -> KnobModel {
-    let black = Material::black_gloss().with_grain(0.04);
+    let black = Material::black_gloss().with_grain(0.02);
     let nose = Part::new(
-        vec![seg(Flat, 0.0, 0.90, 0.62, 0.62, black), seg(Dome, 0.90, 0.99, 0.62, 0.34, black), seg(Line, 0.99, 1.0, 0.34, 0.24, black)],
-        Plan::Bar { tip: 0.90, tail: 0.0, tip_width: 0.075, tail_width: 0.34, rounding: 0.06 },
+        vec![seg(Flat, 0.0, 0.70, 0.84, 0.84, black), seg(Line, 0.70, 0.90, 0.84, 0.62, black), seg(Line, 0.90, 1.0, 0.62, 0.22, black)],
+        Plan::Bar { tip: 1.0, tail: 0.0, tip_width: 0.10, tail_width: 0.42, rounding: 0.10 },
     );
-    KnobModel::new(vec![seg(Flat, 0.0, 0.80, 0.26, 0.26, black), seg(Dome, 0.80, 0.96, 0.26, 0.05, black), seg(Line, 0.96, 0.98, 0.05, 0.02, black)])
-        .with_under(vec![seg(Dome, 0.0, 0.38, 0.88, 0.82, black), seg(Dome, 0.38, 0.50, 0.82, 0.60, black), seg(Line, 0.50, 0.53, 0.60, 0.20, black)])
-        .with_angular(Angular::flutes(28, 0.03, 0.62))
+    KnobModel::new(vec![seg(Flat, 0.0, 0.78, 0.24, 0.24, black), seg(Dome, 0.78, 0.94, 0.24, 0.05, black), seg(Line, 0.94, 0.96, 0.05, 0.02, black)])
+        .with_under(vec![seg(Dome, 0.0, 0.32, 0.87, 0.84, black), seg(Dome, 0.32, 0.44, 0.84, 0.66, black), seg(Line, 0.44, 0.48, 0.66, 0.20, black)])
+        .with_angular(Angular::flutes(28, 0.03, 0.60))
         .with_part(nose)
-        .with_edge(0.02)
-        .with_pointer(Pointer::line(0.34, 0.86, 0.045, white()))
+        .with_edge(0.018)
+        .with_pointer(Pointer::line(0.34, 0.95, 0.06, white()))
 }
 
 /// White pie-crust skirt with rounded lobes under a glossy black cap.
@@ -214,11 +220,11 @@ fn pie() -> KnobModel {
 
 /// Plain matte black cylinder with a fine grip and a pointer line in the accent colour.
 fn snk() -> KnobModel {
-    let body = Material::rubber(0.11, 0.11, 0.115);
+    let body = Material::plastic(0.15, 0.15, 0.155, 0.40).with_sheen(0.3).with_grain(0.02);
     KnobModel::new(vec![
-        seg(Dome, 0.0, 0.66, 1.0, 0.985, body),
-        seg(Dome, 0.66, 0.75, 0.985, 0.93, body),
-        seg(Line, 0.75, 0.79, 0.93, 0.07, body),
+        seg(Dome, 0.0, 0.66, 1.0, 0.975, body),
+        seg(Line, 0.66, 0.75, 0.975, 0.92, body),
+        seg(Line, 0.75, 0.79, 0.92, 0.07, body),
         seg(Flat, 0.79, 0.83, 0.06, 0.06, body),
         seg(Dome, 0.83, 0.85, 0.06, 0.02, body),
     ])
@@ -262,7 +268,7 @@ fn rd() -> KnobModel {
     ])
     .with_angular(Angular::knurl(36, 0.025, 0.62))
     .with_edge(0.02)
-    .with_pointer(Pointer::line(0.58, 0.88, 0.06, white()))
+    .with_pointer(Pointer::line(0.56, 0.90, 0.085, white()))
 }
 
 /// Flat-topped silver pointer: a wide tapered bar on a low round hub, dark index.
@@ -289,75 +295,99 @@ fn dm() -> KnobModel {
         seg(Dome, 0.92, 0.95, 0.10, 0.02, base),
     ])
     .with_edge(0.03)
-    .with_pointer(Pointer::dot(0.54, 0.14, 0.012, white()))
+    .with_pointer(Pointer::dot(0.52, 0.20, 0.014, white()))
 }
 
-/// Square keycap with rounded corners, sloped sides, a dished top and a legend line.
+/// Square keycap with rounded corners, sloped sides, a smoothly dished top and a legend
+/// line.
 fn sq() -> KnobModel {
-    let cap = Material::plastic(0.15, 0.16, 0.17, 0.68).with_coat(0.08);
+    let cap = Material::plastic(0.17, 0.18, 0.19, 0.55).with_sheen(0.3);
     KnobModel::new(vec![
-        seg(Flat, 0.0, 0.20, 0.50, 0.50, cap),
-        seg(Line, 0.20, 0.45, 0.50, 0.53, cap),
-        seg(Line, 0.45, 0.66, 0.53, 0.58, cap),
-        seg(Flat, 0.66, 0.72, 0.58, 0.58, cap),
-        seg(Dome, 0.72, 0.80, 0.58, 0.50, cap),
-        seg(Line, 0.80, 0.97, 0.50, 0.04, cap),
+        seg(Dome, 0.0, 0.70, 0.50, 0.585, cap),
+        seg(Dome, 0.70, 0.78, 0.585, 0.53, cap),
+        seg(Line, 0.78, 0.96, 0.53, 0.05, cap),
+        seg(Dome, 0.96, 0.985, 0.05, 0.02, cap),
     ])
     .with_plan(Plan::Polygon { sides: 4, rounding: 0.35 })
-    .with_edge(0.02)
-    .with_pointer(Pointer::line(0.10, 0.56, 0.065, white()))
+    .with_edge(0.022)
+    .with_pointer(Pointer::line(0.10, 0.60, 0.07, white()))
 }
 
-/// Large black skirt sweeping out from a small crown; a thick white index runs from the
-/// crown to the edge.
+/// Chunky black knob: a broad rounded shoulder with eight shallow finger lobes swelling
+/// out under a small crown, with a thick white index on the shoulder and on the crown.
 fn fat() -> KnobModel {
-    let black = Material::plastic(0.07, 0.07, 0.075, 0.4).with_coat(0.5).with_grain(0.03);
+    let black = satin_black();
     KnobModel::new(vec![
-        seg(Dome, 0.0, 0.34, 0.80, 0.78, black),
-        seg(Dome, 0.34, 0.42, 0.78, 0.70, black),
-        seg(Line, 0.42, 0.50, 0.70, 0.50, black),
-        seg(Fillet, 0.50, 0.94, 0.50, 0.10, black),
+        seg(Dome, 0.0, 0.30, 0.80, 0.785, black),
+        seg(Dome, 0.30, 0.39, 0.785, 0.72, black),
+        seg(Line, 0.39, 0.43, 0.72, 0.58, black),
+        seg(Flat, 0.43, 0.47, 0.56, 0.56, black),
+        seg(Dome, 0.47, 0.92, 0.58, 0.24, black),
+        seg(Line, 0.92, 0.96, 0.24, 0.08, black),
+        seg(Dome, 0.96, 1.0, 0.08, 0.02, black),
+    ])
+    .with_angular(Angular::scallops(8, 0.045, 0.62))
+    .with_edge(0.016)
+    .with_pointer(Pointer::line(0.50, 0.92, 0.11, white()))
+    .with_mark(Pointer::line(0.06, 0.37, 0.10, white()))
+}
+
+/// Black octagonal bakelite: eight flat sides with a bevelled top ring around a recessed
+/// centre, standing on an octagonal flange.
+fn pag() -> KnobModel {
+    let black = Material::black_polished();
+    KnobModel::new(vec![
+        seg(Dome, 0.0, 0.30, 0.50, 0.49, black),
+        seg(Line, 0.30, 0.35, 0.49, 0.60, black),
+        seg(Flat, 0.35, 0.58, 0.60, 0.60, black),
+        seg(Line, 0.58, 0.68, 0.60, 0.50, black),
+        seg(Line, 0.68, 0.72, 0.50, 0.17, black),
+        seg(Line, 0.72, 0.94, 0.17, 0.10, black),
         seg(Dome, 0.94, 1.0, 0.10, 0.02, black),
     ])
-    .with_edge(0.02)
-    .with_pointer(Pointer::line(0.08, 0.97, 0.10, white()))
+    .with_plan(Plan::Polygon { sides: 8, rounding: 0.10 })
+    .with_edge(0.014)
+    .with_pointer(Pointer::line(0.30, 0.68, 0.09, accent_paint()))
+    .with_mark(Pointer::line(0.75, 0.94, 0.09, accent_paint()))
 }
 
-/// Black octagonal bakelite: ribbed sloping faces around a glossy centre dome.
-fn pag() -> KnobModel {
-    let black = Material::black_gloss().with_grain(0.04);
-    KnobModel::new(vec![seg(Flat, 0.0, 0.58, 0.34, 0.34, black), seg(Line, 0.58, 0.90, 0.34, 0.22, black), seg(Line, 0.90, 0.97, 0.22, 0.03, black)])
-        .with_under(vec![seg(Dome, 0.0, 0.46, 0.74, 0.36, Material::black_gloss())])
-        .with_plan(Plan::Polygon { sides: 8, rounding: 0.12 })
-        .with_angular(Angular { r_out: 0.90, ..Angular::flutes(32, 0.02, 0.56) })
-        .with_edge(0.016)
-        .with_pointer(Pointer::line(0.54, 0.88, 0.055, accent_paint()))
-}
-
-/// Bar lever on a round hub, tipped with the accent colour.
+/// Lever: a tapered bar with rounded shoulders across a domed hub, on a knurled base
+/// ring; the tip of the bar is painted in the accent colour.
 fn lvr() -> KnobModel {
-    let black = Material::black_gloss().with_grain(0.03);
+    let black = Material::black_polished();
+    let ring = satin_black();
     let bar = Part::new(
-        vec![seg(Flat, 0.0, 0.92, 0.40, 0.40, black), seg(Dome, 0.92, 1.0, 0.40, 0.10, black)],
-        Plan::Bar { tip: 1.0, tail: 0.30, tip_width: 0.11, tail_width: 0.15, rounding: 0.08 },
+        vec![seg(Flat, 0.0, 0.89, 0.70, 0.70, black), seg(Dome, 0.89, 0.97, 0.70, 0.54, black), seg(Line, 0.97, 1.0, 0.54, 0.10, black)],
+        Plan::Bar { tip: 1.0, tail: 0.60, tip_width: 0.11, tail_width: 0.19, rounding: 0.10 },
     );
-    KnobModel::new(vec![seg(Dome, 0.0, 0.28, 0.54, 0.51, black), seg(Dome, 0.28, 0.36, 0.51, 0.42, black), seg(Line, 0.36, 0.39, 0.42, 0.03, black)])
+    KnobModel::new(vec![seg(Flat, 0.0, 0.70, 0.22, 0.22, ring), seg(Line, 0.70, 0.75, 0.22, 0.17, ring), seg(Line, 0.75, 0.79, 0.17, 0.02, ring)])
+        .with_under(vec![seg(Dome, 0.0, 0.38, 0.58, 0.55, black), seg(Dome, 0.38, 0.50, 0.55, 0.42, black), seg(Line, 0.50, 0.54, 0.42, 0.20, black)])
+        .with_angular(Angular::knurl(40, 0.03, 0.70))
         .with_part(bar)
-        .with_edge(0.016)
-        .with_pointer(Pointer::line(0.70, 0.95, 0.11, accent_paint()))
+        .with_edge(0.014)
+        .with_pointer(Pointer::line(0.50, 0.965, 0.12, accent_paint()))
 }
 
-/// Small matte black body with a short tab that carries the white index.
+/// Matte black cylinder with a knurled wall and a tab at the front that carries the
+/// white index from the top face down to its tip.
 fn tab() -> KnobModel {
-    let black = Material::black_matte().with_grain(0.03);
+    let black = satin_black();
     let tab = Part::new(
-        vec![seg(Flat, 0.0, 0.90, 0.34, 0.34, black), seg(Line, 0.90, 1.0, 0.34, 0.12, black)],
-        Plan::Bar { tip: 0.98, tail: 0.0, tip_width: 0.09, tail_width: 0.12, rounding: 0.05 },
+        vec![seg(Flat, 0.0, 0.90, 0.46, 0.46, black), seg(Line, 0.90, 0.96, 0.46, 0.38, black), seg(Line, 0.96, 1.0, 0.38, 0.04, black)],
+        Plan::Bar { tip: 1.0, tail: 0.0, tip_width: 0.11, tail_width: 0.19, rounding: 0.06 },
     );
-    KnobModel::new(vec![seg(Dome, 0.0, 0.48, 0.70, 0.64, black), seg(Dome, 0.48, 0.58, 0.64, 0.50, black), seg(Line, 0.58, 0.62, 0.50, 0.03, black)])
-        .with_part(tab)
-        .with_edge(0.016)
-        .with_pointer(Pointer::line(0.30, 0.94, 0.05, white()))
+    KnobModel::new(vec![
+        seg(Dome, 0.0, 0.62, 0.74, 0.72, black),
+        seg(Line, 0.62, 0.69, 0.72, 0.67, black),
+        seg(Line, 0.69, 0.73, 0.67, 0.08, black),
+        seg(Flat, 0.73, 0.77, 0.07, 0.07, black),
+        seg(Dome, 0.77, 0.79, 0.07, 0.02, black),
+    ])
+    .with_angular(Angular { r_out: 0.73, ..Angular::knurl(34, 0.03, 0.67) })
+    .with_part(tab)
+    .with_edge(0.014)
+    .with_pointer(Pointer::line(0.78, 0.97, 0.085, white()))
+    .with_mark(Pointer::line(0.16, 0.64, 0.075, white()))
 }
 
 /// Wide black knurled skirt around a white cap with a black index.
@@ -390,22 +420,28 @@ fn knl() -> KnobModel {
     ])
     .with_angular(Angular { r_out: 0.88, ..Angular::knurl(30, 0.04, 0.74) })
     .with_edge(0.012)
-    .with_pointer(Pointer::groove(0.18, 0.66, 0.06, 0.012, accent_paint()))
+    .with_pointer(Pointer::groove(0.14, 0.66, 0.09, 0.014, accent_paint()))
 }
 
-/// Tall narrow crown on a concave black skirt; the bright index runs down the side.
+/// Tall narrow fluted crown on a thin flared skirt, glossy black; the bright index runs
+/// down the skirt and is repeated on the crown.
 fn skt() -> KnobModel {
-    let black = Material::black_gloss().with_grain(0.03);
+    let black = Material::black_polished();
     KnobModel::new(vec![
-        seg(Dome, 0.0, 0.40, 1.0, 0.97, black),
-        seg(Dome, 0.40, 0.48, 0.97, 0.90, black),
-        seg(Line, 0.48, 0.52, 0.90, 0.55, black),
-        seg(Fillet, 0.52, 0.92, 0.55, 0.12, black),
-        seg(Line, 0.92, 0.96, 0.12, 0.02, black),
+        seg(Dome, 0.0, 0.34, 1.0, 0.985, black),
+        seg(Dome, 0.34, 0.43, 0.985, 0.92, black),
+        seg(Line, 0.43, 0.49, 0.92, 0.30, black),
     ])
-    .with_angular(Angular { r_out: 0.92, ..Angular::knurl(48, 0.015, 0.62) })
-    .with_edge(0.02)
-    .with_pointer(Pointer::line(0.20, 0.94, 0.06, accent_paint()))
+    .with_under(vec![
+        seg(Flat, 0.0, 0.50, 0.34, 0.34, black),
+        seg(Fillet, 0.50, 0.90, 0.34, 0.11, black),
+        seg(Line, 0.90, 0.95, 0.11, 0.08, black),
+        seg(Dome, 0.95, 0.985, 0.08, 0.02, black),
+    ])
+    .with_angular(Angular { r_out: 0.49, ..Angular::flutes(14, 0.07, 0.40) })
+    .with_edge(0.016)
+    .with_pointer(Pointer::line(0.55, 0.94, 0.07, accent_paint()))
+    .with_mark(Pointer::line(0.08, 0.36, 0.07, accent_paint()))
 }
 
 /// Large knob moulded in the item colour with broad ribs that run up onto the crown.
@@ -419,7 +455,7 @@ fn rib() -> KnobModel {
     ])
     .with_angular(Angular::flutes(26, 0.045, 0.50))
     .with_edge(0.02)
-    .with_pointer(Pointer::line(0.10, 0.50, 0.06, white()))
+    .with_pointer(Pointer::line(0.08, 0.52, 0.085, white()))
 }
 
 /// Glossy dark cap on a flared chrome skirt, white index.
@@ -432,19 +468,17 @@ fn chr() -> KnobModel {
         .with_pointer(Pointer::line(0.14, 0.56, 0.06, white()))
 }
 
-/// Round keycap with a dished top and a legend line in the accent colour.
+/// Round keycap with a smoothly dished top and a legend line in the accent colour.
 fn key() -> KnobModel {
-    let cap = Material::plastic(0.10, 0.10, 0.11, 0.62).with_coat(0.12);
+    let cap = Material::plastic(0.14, 0.14, 0.15, 0.52).with_sheen(0.3);
     KnobModel::new(vec![
-        seg(Flat, 0.0, 0.20, 0.46, 0.46, cap),
-        seg(Line, 0.20, 0.45, 0.46, 0.49, cap),
-        seg(Line, 0.45, 0.68, 0.49, 0.55, cap),
-        seg(Flat, 0.68, 0.74, 0.55, 0.55, cap),
-        seg(Dome, 0.74, 0.84, 0.55, 0.46, cap),
-        seg(Line, 0.84, 0.92, 0.46, 0.04, cap),
+        seg(Dome, 0.0, 0.72, 0.42, 0.56, cap),
+        seg(Dome, 0.72, 0.82, 0.56, 0.48, cap),
+        seg(Line, 0.82, 0.92, 0.48, 0.06, cap),
+        seg(Dome, 0.92, 0.95, 0.06, 0.02, cap),
     ])
-    .with_edge(0.02)
-    .with_pointer(Pointer::line(0.12, 0.60, 0.07, accent_paint()))
+    .with_edge(0.022)
+    .with_pointer(Pointer::line(0.12, 0.64, 0.075, accent_paint()))
 }
 
 /// Polished brass: domed turned face inside a lathe groove, knurled wall, black index.
@@ -487,17 +521,19 @@ fn ivr() -> KnobModel {
         .with_pointer(Pointer::line(0.14, 0.64, 0.055, Material::plastic(0.16, 0.10, 0.06, 0.6)))
 }
 
-/// Pale maple cylinder with a chamfered flat top and a dark inlaid index.
+/// Pale maple cylinder: slightly dished flat top with a crisp chamfer, straight wall and
+/// a dark inlaid index.
 fn mpl() -> KnobModel {
-    let maple = Material::maple().with_coat(0.3);
+    let maple = Material::maple().with_wood(0.9).with_coat(0.15).with_roughness(0.7);
     KnobModel::new(vec![
-        seg(Dome, 0.0, 0.72, 0.74, 0.72, maple),
-        seg(Line, 0.72, 0.80, 0.72, 0.64, maple),
-        seg(Line, 0.80, 0.86, 0.64, 0.08, maple),
-        seg(Dome, 0.86, 0.88, 0.08, 0.02, maple),
+        seg(Dome, 0.0, 0.70, 0.72, 0.74, maple),
+        seg(Line, 0.70, 0.77, 0.74, 0.69, maple),
+        seg(Line, 0.77, 0.84, 0.69, 0.10, maple),
+        seg(Flat, 0.84, 0.87, 0.08, 0.08, maple),
+        seg(Dome, 0.87, 0.89, 0.08, 0.02, maple),
     ])
-    .with_edge(0.02)
-    .with_pointer(Pointer::line(0.28, 0.78, 0.06, Material::plastic(0.30, 0.17, 0.09, 0.5).with_coat(0.5)))
+    .with_edge(0.012)
+    .with_pointer(Pointer::line(0.18, 0.76, 0.085, Material::plastic(0.13, 0.07, 0.04, 0.6)))
 }
 
 /// Stacked pair: knurled silver outer ring with a black inner knob on top.
@@ -509,18 +545,22 @@ fn dbl() -> KnobModel {
         .with_mark(Pointer::line(0.62, 0.90, 0.05, Material::ink()))
 }
 
-/// Small trimmer: short black body on a flange, with a white-filled slot.
+/// Small trimmer: a short black body with a white-filled screwdriver slot on a thin
+/// knurled flange, and a white dot on the flange that marks the direction.
 fn mini() -> KnobModel {
-    let black = Material::black_matte();
+    let black = satin_black();
     KnobModel::new(vec![
-        seg(Flat, 0.0, 0.40, 0.50, 0.50, black),
-        seg(Dome, 0.40, 0.48, 0.50, 0.42, black),
-        seg(Line, 0.48, 0.52, 0.42, 0.12, black),
-        seg(Flat, 0.52, 0.60, 0.10, 0.10, black),
-        seg(Dome, 0.60, 0.63, 0.10, 0.02, black),
+        seg(Flat, 0.0, 0.46, 0.56, 0.56, black),
+        seg(Line, 0.46, 0.52, 0.56, 0.50, black),
+        seg(Line, 0.52, 0.55, 0.50, 0.16, black),
+        seg(Flat, 0.55, 0.72, 0.14, 0.14, black),
+        seg(Line, 0.72, 0.76, 0.14, 0.10, black),
+        seg(Line, 0.76, 0.79, 0.10, 0.02, black),
     ])
+    .with_angular(Angular::knurl(32, 0.03, 0.74))
     .with_edge(0.014)
-    .with_pointer(Pointer::groove(0.0, 0.44, 0.09, 0.03, white()))
+    .with_pointer(Pointer::groove(-0.40, 0.48, 0.11, 0.035, white()))
+    .with_mark(Pointer::dot(0.64, 0.12, 0.0, white()))
 }
 
 /// Tall slim black knob with a straight knurl and a white index over the top edge.
@@ -562,7 +602,7 @@ fn ebn() -> KnobModel {
         seg(Dome, 0.90, 0.92, 0.06, 0.02, ebony),
     ])
     .with_edge(0.016)
-    .with_pointer(Pointer::line(0.40, 0.86, 0.055, Material::plastic(0.88, 0.78, 0.52, 0.5).with_coat(0.6)))
+    .with_pointer(Pointer::line(0.36, 0.88, 0.075, Material::plastic(0.93, 0.85, 0.62, 0.5).with_coat(0.6)))
 }
 
 /// Walnut top let into a raised chrome collar, pale index on the wood.
@@ -596,4 +636,9 @@ fn rck() -> KnobModel {
     .with_angular(Angular::flutes(18, 0.035, 0.56))
     .with_edge(0.014)
     .with_pointer(Pointer::line(0.12, 0.78, 0.06, accent_paint()))
+}
+
+/// Satin black for moulded grips: dark grey, not black, with a soft sheen.
+fn satin_black() -> Material {
+    Material::plastic(0.14, 0.14, 0.145, 0.42).with_sheen(0.25).with_grain(0.02)
 }

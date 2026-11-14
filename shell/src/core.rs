@@ -80,6 +80,7 @@ impl Core {
 
     pub fn render(&mut self) -> &Framebuffer {
         self.scene.clear();
+        goodlookindri::hardware::set_device_scale(self.scale);
         self.app.paint(&mut self.scene, self.w, self.h);
         self.fb.clear(Color(0xff000000));
         self.fb.replay(&self.scene, self.scale);

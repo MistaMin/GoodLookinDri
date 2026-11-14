@@ -8,7 +8,7 @@ use std::f32::consts::PI;
 use std::time::Instant;
 
 use goodlookindri::color::Color;
-use goodlookindri::knob3d::{preset, render, Angular, KnobBake, KnobCache, KnobModel, Material, Plan, Pointer, Rig, Segment, Shape, Sprite, PRESETS};
+use goodlookindri::knob3d::{preset, render, style_model, STYLE_CODES, Angular, KnobBake, KnobCache, KnobModel, Material, Plan, Pointer, Rig, Segment, Shape, Sprite, PRESETS};
 
 const COL: usize = 640;
 const ROW: usize = 190;
@@ -146,8 +146,96 @@ fn modifiers() -> Vec<KnobModel> {
     ]
 }
 
+/// Close-up sheet of chosen knobs: `knob3d_sheet out.ppm focus <code>...`. Each knob is
+/// shown large on the near-black and on the silver panel, then medium and at device
+/// radius 24 at several angles, which is where pointers have to stay readable.
+fn focus(out: &str, codes: &[String]) {
+    const CW: usize = 1100;
+    const CH: usize = 300;
+    let (w, h) = (CW, CH * codes.len().max(1));
+    let mut img = vec![0u8; w * h * 3];
+    let split = [560usize, 820];
+    for y in 0..h {
+        for x in 0..w {
+            let silver = (x >= 280 && x < split[0]) || x >= 960;
+            let p = if silver { panel(x % 600, y % CH, 1) } else { panel(2 * COL, y % CH, 1) };
+            for c in 0..3 {
+                img[(y * w + x) * 3 + c] = (p[c].clamp(0.0, 1.0) * 255.0).round() as u8;
+            }
+        }
+    }
+    let (dark, silver) = (Color(FLOORS[2]), Color(FLOORS[0]));
+    let rig = Rig::studio();
+    let cache = KnobCache::global();
+    for (row, code) in codes.iter().enumerate() {
+        let Some(model) = preset(code).or_else(|| style_model(code)) else {
+            eprintln!("unknown knob {code}");
+            continue;
+        };
+        let accent = Color(0xffe0_7a5a);
+        let cy = (row * CH + CH / 2 + 14) as i32;
+        let spots: [(f32, i32, f32, Color); 9] = [
+            (100.0, 140, -0.2 * PI, dark),
+            (100.0, 420, -0.2 * PI, silver),
+            (48.0, 640, 0.55 * PI, dark),
+            (48.0, 760, -0.8 * PI, dark),
+            (24.0, 850, -0.2 * PI, dark),
+            (24.0, 910, 0.8 * PI, dark),
+            (24.0, 990, -0.2 * PI, silver),
+            (24.0, 1050, 0.8 * PI, silver),
+            (14.0, 880, 0.3 * PI, dark),
+        ];
+        for (k, (radius, x, angle, floor)) in spots.iter().enumerate() {
+            let s = cache.get(&model, &rig, *radius, *angle, accent, *floor);
+            let cy = if k == 8 { cy + 90 } else { cy };
+            blit(&mut img, w, h, &s, *x, cy);
+        }
+    }
+    let mut data = format!("P6\n{w} {h}\n255\n").into_bytes();
+    data.extend_from_slice(&img);
+    std::fs::write(out, data).expect("write ppm");
+}
+
+/// Every style and preset at one small device radius on the near-black panel, at two
+/// angles: `knob3d_sheet out.ppm small 24`. Shows whether each pointer is still readable.
+fn small(out: &str, radius: f32) {
+    let codes: Vec<&str> = STYLE_CODES.iter().chain(PRESETS.iter()).copied().collect();
+    let cell = (radius * 6.4) as usize;
+    let cols = 10;
+    let rows = codes.len().div_ceil(cols);
+    let (w, h) = (cols * cell, rows * (cell / 2 + 8));
+    let mut img = vec![0u8; w * h * 3];
+    for (i, px) in img.chunks_mut(3).enumerate() {
+        let p = panel(2 * COL, i / w, 1);
+        for c in 0..3 {
+            px[c] = (p[c].clamp(0.0, 1.0) * 255.0).round() as u8;
+        }
+    }
+    let (rig, cache, dark) = (Rig::studio(), KnobCache::global(), Color(FLOORS[2]));
+    for (i, code) in codes.iter().enumerate() {
+        let model = if i < STYLE_CODES.len() { style_model(code) } else { preset(code) }.unwrap();
+        let (cx, cy) = ((i % cols * cell) as i32, ((i / cols) * (cell / 2 + 8) + cell / 4 + 8) as i32);
+        for (k, angle) in [-0.3 * PI, 0.65 * PI].iter().enumerate() {
+            let s = cache.get(&model, &rig, radius, *angle, Color(0xffe0_7a5a), dark);
+            blit(&mut img, w, h, &s, cx + (cell as i32 * (2 * k as i32 + 1)) / 4, cy);
+        }
+    }
+    let mut data = format!("P6\n{w} {h}\n255\n").into_bytes();
+    data.extend_from_slice(&img);
+    std::fs::write(out, data).expect("write ppm");
+}
+
 fn main() {
-    let out = std::env::args().nth(1).expect("usage: knob3d_sheet <out.ppm>");
+    let out = std::env::args().nth(1).expect("usage: knob3d_sheet <out.ppm> [focus <code>... | small <radius>]");
+    let rest: Vec<String> = std::env::args().skip(2).collect();
+    if rest.first().map(String::as_str) == Some("focus") {
+        focus(&out, &rest[1..]);
+        return;
+    }
+    if rest.first().map(String::as_str) == Some("small") {
+        small(&out, rest.get(1).and_then(|r| r.parse().ok()).unwrap_or(24.0));
+        return;
+    }
     let rows = PRESETS.len() + 2;
     let (w, h) = (COL * 3, ROW * rows);
     let mut img = vec![0u8; w * h * 3];

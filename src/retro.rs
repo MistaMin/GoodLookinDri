@@ -202,19 +202,37 @@ fn round_pts(r: Rect, radius: f32) -> Vec<Point> {
     out
 }
 
+/// Below this much light (`strength` × the colour's alpha) a tube is drawn switched off.
+const TUBE_OFF: f32 = 0.2;
+/// The glass of an unlit tube: (body, shoulder highlight). Dull and dark, tinted by the gas colour.
+fn tube_off(c: Color) -> (Color, Color) {
+    let c = c.with_alpha(1.0);
+    (c.darker(0.66).mix(Color(0xff3a4046), 0.30), c.mix(Color(0xffffffff), 0.45).with_alpha(0.22))
+}
+/// Alpha of the hot core for a tube carrying light `k`.
+fn core_alpha(k: f32) -> f32 { 0.9 * k.clamp(0.0, 1.0).sqrt() }
+
 /// Neon tube look for a polyline: additive halo, a soft sleeve, the tube and a hot centre.
-/// `c`'s alpha and `strength` both scale the light, so a dim tube does not bloom like a lit one.
+/// `c`'s alpha and `strength` both scale the light. Under 0.2 of full light the tube is drawn
+/// switched off: dark tinted glass with a faint highlight, no core and no bloom.
 pub fn glow_stroke(scene: &mut Scene, pts: &[Point], c: Color, w: f32, strength: f32, glow: bool, closed: bool) {
     if pts.len() < 2 { return; }
+    let k = strength * c.alpha_f();
+    if k < TUBE_OFF {
+        let (body, hi) = tube_off(c);
+        scene.stroke_poly(pts.to_vec(), Color(0xff000000).with_alpha(0.5), w + 1.0, closed);
+        scene.stroke_poly(pts.to_vec(), body, w, closed);
+        scene.stroke_poly(pts.to_vec(), hi, w * 0.3, closed);
+        return;
+    }
     if !glow {
         scene.stroke_poly(pts.to_vec(), c, w, closed);
         return;
     }
-    let k = strength * c.alpha_f();
     bloom_path(scene, pts, closed, c, w, 3.5 + w * 1.6, 0.20 * k);
     scene.stroke_poly(pts.to_vec(), c.with_alpha(0.30 * k), w + 2.2, closed);
     scene.stroke_poly(pts.to_vec(), c, w, closed);
-    scene.stroke_poly(pts.to_vec(), c.brighter(0.7).with_alpha(0.9 * c.alpha_f().sqrt()), w * 0.35, closed);
+    scene.stroke_poly(pts.to_vec(), c.brighter(0.7).with_alpha(core_alpha(k)), w * 0.35, closed);
 }
 pub fn glow_line(scene: &mut Scene, a: Point, b: Point, c: Color, w: f32, strength: f32, glow: bool) {
     glow_stroke(scene, &[a, b], c, w, strength, glow, false);
@@ -225,13 +243,21 @@ pub fn glow_dot(scene: &mut Scene, c: Point, r: f32, col: Color, glow: bool) {
     scene.glow_ellipse(box_at(r * 4.4, r * 4.4, c), col.with_alpha(0.55), r * 1.6, Blend::Add);
     scene.fill_ellipse_solid(box_at(r * 1.5, r * 1.5, c), col.brighter(0.8));
 }
+/// [`glow_stroke`] for a round rect outline, with the same switched-off look for dim tubes.
 pub fn glow_round(scene: &mut Scene, r: Rect, radius: f32, c: Color, w: f32, strength: f32, glow: bool) {
-    if !glow { scene.stroke_round(r, radius, c, w); return; }
     let k = strength * c.alpha_f();
+    if k < TUBE_OFF {
+        let (body, hi) = tube_off(c);
+        scene.stroke_round(r, radius, Color(0xff000000).with_alpha(0.5), w + 1.0);
+        scene.stroke_round(r, radius, body, w);
+        scene.stroke_round(r, radius, hi, w * 0.3);
+        return;
+    }
+    if !glow { scene.stroke_round(r, radius, c, w); return; }
     bloom_path(scene, &round_pts(r, radius), true, c, w, 3.5 + w * 1.6, 0.20 * k);
     scene.stroke_round(r, radius, c.with_alpha(0.30 * k), w + 2.2);
     scene.stroke_round(r, radius, c, w);
-    scene.stroke_round(r, radius, c.brighter(0.7).with_alpha(0.9 * c.alpha_f().sqrt()), w * 0.35);
+    scene.stroke_round(r, radius, c.brighter(0.7).with_alpha(core_alpha(k)), w * 0.35);
 }
 fn juce_arc(scene: &mut Scene, c: Point, rad: f32, from: f32, to: f32, color: Color, width: f32) {
     let k = -HALF_PI;
@@ -251,13 +277,27 @@ fn glow_juce_arc(scene: &mut Scene, c: Point, rad: f32, from: f32, to: f32, colo
     bloom_path(scene, &juce_arc_pts(c, rad, from, to), false, color, w, 3.0 + w * 0.8, 0.20 * k);
     juce_arc(scene, c, rad, from, to, color.with_alpha(0.28 * k), w + 2.4);
     juce_arc(scene, c, rad, from, to, color, w);
-    juce_arc(scene, c, rad, from, to, color.brighter(0.7).with_alpha(0.9 * color.alpha_f().sqrt()), w * 0.35);
+    juce_arc(scene, c, rad, from, to, color.brighter(0.7).with_alpha(core_alpha(k)), w * 0.35);
 }
-/// Faint halo behind a centred text run (the glyphs themselves cannot be feathered).
+/// Soft halo behind a centred text run: a feathered additive pool the size of the run, then the
+/// run itself stamped one device pixel out in four directions at low alpha. The glyphs drawn on
+/// top afterwards stay crisp.
 fn text_bloom(scene: &mut Scene, at: Point, text: &str, c: Color, size: f32, glow: bool) {
-    if !glow || text.is_empty() { return; }
-    let r = box_at(size * 0.5 * text.chars().count() as f32, size * 0.45, at);
-    bloom_rect(scene, r, size * 0.2, c.with_alpha(1.0), size * 0.55, 0.10 * c.alpha_f());
+    if !glow || text.trim().is_empty() { return; }
+    let a = c.alpha_f();
+    let hue = c.with_alpha(1.0);
+    let r = box_at(size * 0.52 * text.chars().count() as f32, size * 0.5, at);
+    bloom_rect(scene, r, size * 0.25, hue, size * 0.75, 0.13 * a);
+    bloom_rect(scene, r.reduced(0.0, size * 0.1), size * 0.2, hue, size * 0.3, 0.10 * a);
+    let d = (1.0 / crate::hardware::device_scale()).max(0.5);
+    for (dx, dy) in [(-d, 0.0), (d, 0.0), (0.0, -d), (0.0, d)] {
+        scene.text(Point::new(at.x + dx, at.y + dy), text, hue.with_alpha(0.17 * a), size, true);
+    }
+}
+/// Lit display text: [`text_bloom`], then the crisp run a little hotter than `c`.
+fn lit_text(scene: &mut Scene, r: Rect, text: &str, c: Color, size: f32, glow: bool) {
+    text_bloom(scene, r.center(), text, c, size, glow);
+    scene.text(r.center(), text, if glow { c.brighter(0.22) } else { c }, size, true);
 }
 
 pub fn scanlines(scene: &mut Scene, r: Rect, t: f32, alpha: f32, glow: bool) {
@@ -268,15 +308,19 @@ pub fn scanlines(scene: &mut Scene, r: Rect, t: f32, alpha: f32, glow: bool) {
         hline(scene, y.trunc(), r.x, r.right(), ink, 1.0);
         y += 2.5;
     }
+    // The refresh sweep: a thin bright row where the beam is, and a short afterglow above it
+    // that fades out, so a still frame shows a moving line and not a band.
     let sweep = r.y + (t * 0.35).rem_euclid(1.0) * r.h;
-    let (y0, y1) = ((sweep - 12.0).max(r.y), (sweep + 12.0).min(r.bottom()));
-    if y1 - y0 > 1.0 {
-        let (f0, f1) = ((y0 - (sweep - 12.0)) / 24.0, (y1 - (sweep - 12.0)) / 24.0);
-        let peak = |f: f32| Color(0xffffffff).with_alpha(0.035 * (1.0 - (f * 2.0 - 1.0).abs()));
-        let mut st = vec![(0.0, peak(f0))];
-        if f0 < 0.5 && f1 > 0.5 { st.push(((0.5 - f0) / (f1 - f0), peak(0.5))); }
-        st.push((1.0, peak(f1)));
-        scene.fill_shape(Shape::Round(Rect::new(r.x, y0, r.w, y1 - y0), 0.0), Paint::Linear { stops: Stops::new(&st), angle: HALF_PI }, 0.0, Blend::Screen);
+    let tail = (r.h * 0.22).clamp(6.0, 22.0);
+    let y0 = (sweep - tail).max(r.y);
+    if sweep - y0 > 1.0 {
+        let f0 = (y0 - (sweep - tail)) / tail;
+        let w = |a: f32| Color(0xffffffff).with_alpha(a);
+        let st = Stops::new(&[(0.0, w(0.03 * f0 * f0)), (0.75, w(0.006 + 0.01 * f0)), (1.0, w(0.03))]);
+        scene.fill_shape(Shape::Round(Rect::new(r.x, y0, r.w, sweep - y0), 0.0), Paint::Linear { stops: st, angle: HALF_PI }, 0.0, Blend::Screen);
+    }
+    if sweep > r.y + 0.5 && sweep < r.bottom() - 0.5 {
+        scene.fill_shape(Shape::Round(Rect::new(r.x, sweep - 0.5, r.w, 0.7), 0.0), Paint::Solid(Color(0xffffffff).with_alpha(0.085)), 0.0, Blend::Screen);
     }
 }
 
@@ -333,16 +377,23 @@ pub fn draw_bar_wedge(scene: &mut Scene, r: Rect, level: f32, lit: Color, t: f32
         let f = i as f32 / (n - 1) as f32;
         let x = b.x + f * (b.w - 4.0);
         let h = b.h * (0.14 + 0.86 * f.powf(1.35));
-        let w = b.w / n as f32 * 0.68;
+        let w = b.w / n as f32 * 0.60;
         let on = f <= level + 0.5 / n as f32;
         let c = if f > 0.84 { Color(0xffff3b2a) } else if f > 0.68 { lit.mix(Color(0xffff6a1a), 0.55) } else { lit };
         segs.push(Seg { r: Rect::new(x, b.bottom() - h, w, h), c, on });
     }
-    segments(scene, &segs, 1.2, t, glow);
+    segments(scene, &segs, 1.0, t, glow);
+    // The halos of neighbouring bars meet in the gaps; put the dark back so tall bars stay apart.
+    for pair in segs.windows(2) {
+        let (a, c) = (&pair[0], &pair[1]);
+        if !(a.on && c.on) { continue; }
+        let gap = Rect::new(a.r.right() + 0.25, c.r.y, (c.r.x - a.r.right() - 0.5).max(0.0), c.r.h);
+        if gap.w > 0.3 { solid_rect(scene, gap, Color(0xff040302).with_alpha(0.62)); }
+    }
     let mut q = r.reduced(8.0, 2.0);
     let labels = remove_bottom(&mut q, 10.0);
     for i in 0..=5 {
-        text_c(scene, Rect::new(b.x + b.w * i as f32 / 5.0 - 10.0, labels.y, 20.0, labels.h), &(i * 12).to_string(), lit.with_alpha(0.7), 7.5);
+        lit_text(scene, Rect::new(b.x + b.w * i as f32 / 5.0 - 10.0, labels.y, 20.0, labels.h), &(i * 12).to_string(), lit.with_alpha(0.7), 7.5, glow);
     }
     scanlines(scene, r, t, 0.14, glow);
     window_glass(scene, r, 5.0);
@@ -381,7 +432,7 @@ pub fn draw_mountains(scene: &mut Scene, r: Rect, left: f32, right: f32, lit: Co
     }
     for i in 0..6 {
         let y = b.bottom() - b.h * i as f32 / 5.0;
-        text_c(scene, box_at(20.0, 9.0, Point::new(cx, y - 3.0)), &(i * 10).to_string(), lit.with_alpha(0.8), 7.5);
+        lit_text(scene, box_at(20.0, 9.0, Point::new(cx, y - 3.0)), &(i * 10).to_string(), lit.with_alpha(0.8), 7.5, glow);
         hline(scene, y.trunc(), cx - 8.0, cx - 5.0, lit.with_alpha(0.8), 1.0);
         hline(scene, y.trunc(), cx + 5.0, cx + 8.0, lit.with_alpha(0.8), 1.0);
     }
@@ -400,10 +451,11 @@ pub fn draw_lcd_panel(scene: &mut Scene, r: Rect, a: &str, a_label: &str, b: &st
         let lab = remove_bottom(&mut cell, 12.0);
         let k = flicker(t + i as f32, glow);
         scene.fill_round(cell, 4.0, Color(0xff0a0603), Color(0xff040201), true);
-        if glow { bloom_rect(scene, cell.reduced(cell.w * 0.3, cell.h * 0.34), 3.0, lit.with_alpha(1.0), cell.h * 0.42, 0.10 * k); }
+        if glow { bloom_rect(scene, cell.reduced(cell.w * 0.3, cell.h * 0.34), 3.0, lit.with_alpha(1.0), cell.h * 0.42, 0.07 * k); }
+        recess_shade(scene, cell, 4.0, 1.6, Lt::screen());
         scene.stroke_round(cell, 4.0, lit.with_alpha(0.26), 1.0);
-        meters::draw_seven_segment(scene, cell.reduced(5.0, 5.0), if i == 0 { a } else { b }, lit.with_alpha(k), true);
-        text_c(scene, lab, if i == 0 { a_label } else { b_label }, lit.with_alpha(0.85), 8.5);
+        meters::draw_seven_segment(scene, cell.reduced(4.0, 3.0), if i == 0 { a } else { b }, lit.with_alpha(k), false);
+        lit_text(scene, lab, if i == 0 { a_label } else { b_label }, lit.with_alpha(0.85), 8.5, glow);
     }
     scanlines(scene, r, t, 0.12, glow);
     window_glass(scene, r, 6.0);
@@ -412,7 +464,8 @@ pub fn draw_lcd_panel(scene: &mut Scene, r: Rect, a: &str, a_label: &str, b: &st
 
 pub fn draw_arc_gauge(scene: &mut Scene, r: Rect, level: f32, lit: Color, t: f32, glow: bool) {
     window_ground(scene, r, 6.0, Color(0xff100d09), Color(0xff040303));
-    let rad = (r.w * 0.46).min(r.h * 0.92);
+    // The outer edge of the segments is at 1.1 rad: keep it and its bloom inside the window.
+    let rad = ((r.w * 0.5 - 6.0) / 1.1).min((r.h - 13.0) / 1.1);
     let c = Point::new(r.center().x, r.bottom() - 6.0);
     let red = Color(0xffff3b2a);
     let (w, n) = (rad * 0.20, 30);
@@ -456,10 +509,9 @@ pub fn draw_arc_gauge(scene: &mut Scene, r: Rect, level: f32, lit: Color, t: f32
         let tip1 = Point::new(c.x + a.sin() * rad * 0.74, c.y - a.cos() * rad * 0.74);
         let col = if f > 0.86 { Color(0xffff6a4a) } else { lit.with_alpha(0.9) };
         scene.line(tip0, tip1, col, 1.3);
-        text_c(scene, box_at(14.0, 10.0, Point::new(c.x + a.sin() * rad * 0.64, c.y - a.cos() * rad * 0.64)), &i.to_string(), col, 9.0);
+        lit_text(scene, box_at(14.0, 10.0, Point::new(c.x + a.sin() * rad * 0.64, c.y - a.cos() * rad * 0.64)), &i.to_string(), col, (rad * 0.16).clamp(7.0, 10.0), glow);
     }
     let digits = box_at(rad * 0.55, rad * 0.30, Point::new(c.x, c.y - rad * 0.22));
-    if glow { bloom_rect(scene, digits.reduced(digits.w * 0.25, digits.h * 0.3), 2.0, lit.with_alpha(1.0), digits.h * 0.6, 0.10); }
     meters::draw_seven_segment(scene, digits, &((level * 99.0) as i32).to_string(), lit, false);
     scanlines(scene, r, t, 0.12, glow);
     window_glass(scene, r, 6.0);
@@ -495,7 +547,8 @@ pub fn draw_colour_columns(scene: &mut Scene, r: Rect, l: f32, rr: f32, peak_l: 
 pub fn draw_neon_bars(scene: &mut Scene, r: Rect, level: f32, peak: f32, lo: Color, hi: Color, t: f32, glow: bool) {
     let frame = chamfer(r.reduced(1.5, 1.5), 10.0, false);
     scene.fill_poly(frame.clone(), Color(0xff051217), Color(0xff010507));
-    scene.clip_round(r, 0.0);
+    // Keep the contents inside the cut corners: a round rect that fits within the octagon.
+    scene.clip_round(r.reduced(1.5, 1.5), 17.0);
     let grid = lo.with_alpha(0.06);
     let mut x = r.x;
     while x < r.right() { vline(scene, x.trunc(), r.y, r.bottom(), grid, 1.0); x += 12.0; }
@@ -528,23 +581,50 @@ pub fn draw_neon_bars(scene: &mut Scene, r: Rect, level: f32, peak: f32, lo: Col
     glow_stroke(scene, &frame, lo, 1.4, 1.0, glow, true);
     glow_line(scene, Point::new(r.x + 14.0, r.y + 1.0), Point::new(r.x + 44.0, r.y + 1.0), hi, 2.2, 1.0, glow);
 }
-/// [`window_glass`] for a [`chamfer`] frame, built from pieces that stay inside the cut corners.
+/// [`window_glass`] for a [`chamfer`] frame. There is no polygon inner shadow, so it is built
+/// from the frame's own outline stepped inward: every step adds a contact shade all round, and
+/// the edges that face the light (the walls that throw the shadow) add more, weighted by how
+/// squarely they face it. The cut corners are followed exactly.
 fn chamfer_glass(scene: &mut Scene, r: Rect, ch: f32, top_right_only: bool) {
+    let toward = LightRig::studio().screen_dir();
+    let black = |a: f32| Color(0xff000000).with_alpha(a);
+    let n = 9;
+    let step = 0.75;
+    for j in 0..n {
+        let d = 0.35 + j as f32 * step;
+        let fall = (1.0 - j as f32 / n as f32).powf(1.8);
+        let path = chamfer(r.reduced(d, d), (ch - d * 0.586).max(0.0), top_right_only);
+        if j < 4 { scene.stroke_poly(path.clone(), black(0.34 * fall), step + 0.25, true); }
+        for i in 0..path.len() {
+            let (p, q) = (path[i], path[(i + 1) % path.len()]);
+            let e = q.sub(p);
+            let len = (e.x * e.x + e.y * e.y).sqrt();
+            if len < 0.5 { continue; }
+            // Outward normal of a clockwise outline.
+            let facing = (e.y * toward.x - e.x * toward.y) / len;
+            if facing > 0.05 { scene.line(p, q, black(0.52 * facing * fall), step + 0.35); }
+        }
+    }
     let near = if top_right_only { 0.0 } else { ch };
-    let o = Lt::screen().offset(3.2);
-    let shade = |a: f32| Stops::new(&[(0.0, Color(0xff000000).with_alpha(a)), (0.45, Color(0xff000000).with_alpha(a * 0.35)), (1.0, Color(0x00000000))]);
-    let top = Rect::new(r.x + near, r.y, (r.w - near - ch).max(0.0), 3.0 + o.y * 3.0);
-    scene.fill_shape(Shape::Round(top, 0.0), Paint::Linear { stops: shade(0.8), angle: HALF_PI }, 0.0, Blend::Over);
-    let left = Rect::new(r.x, r.y + near, 3.0 + o.x * 3.0, (r.h - near - ch).max(0.0));
-    scene.fill_shape(Shape::Round(left, 0.0), Paint::Linear { stops: shade(0.6), angle: 0.0 }, 0.0, Blend::Over);
     let yb = r.y + r.h * 0.55;
     let sheen = vec![Point::new(r.x + near, r.y), Point::new(r.right() - ch, r.y), Point::new(r.right(), r.y + ch), Point::new(r.right(), yb), Point::new(r.x, yb), Point::new(r.x, r.y + near)];
     scene.cmds.push(Cmd::FillPoly { pts: sheen, top: Color(0x16ffffff), bottom: Color(0x00ffffff), diagonal: false });
+    // The far walls catch a little of the key.
+    let path = chamfer(r.reduced(0.6, 0.6), (ch - 0.35).max(0.0), top_right_only);
+    for i in 0..path.len() {
+        let (p, q) = (path[i], path[(i + 1) % path.len()]);
+        let e = q.sub(p);
+        let len = (e.x * e.x + e.y * e.y).sqrt();
+        if len < 0.5 { continue; }
+        let facing = (e.y * toward.x - e.x * toward.y) / len;
+        if facing < -0.05 { scene.line(p, q, Color(0xffffffff).with_alpha(0.10 * -facing), 0.7); }
+    }
 }
 
 pub fn draw_hex_ring(scene: &mut Scene, r: Rect, level: f32, lo: Color, hi: Color, t: f32, glow: bool) {
     let c = r.center();
-    let radius = r.w.min(r.h) * 0.48;
+    // The hexagon's points reach 1.12 radius: fit them and the tube's halo inside the window.
+    let radius = (r.w.min(r.h) * 0.5 - 5.0) / 1.12;
     let mut hx = Vec::new();
     for i in 0..6 {
         let a = i as f32 * PI / 3.0 + PI / 6.0;
@@ -573,7 +653,6 @@ pub fn draw_hex_ring(scene: &mut Scene, r: Rect, level: f32, lo: Color, hi: Colo
         );
     }
     let digits = box_at(radius * 0.9, radius * 0.46, Point::new(c.x, c.y + radius * 0.05));
-    if glow { bloom_rect(scene, digits.reduced(digits.w * 0.25, digits.h * 0.3), 2.0, lit, digits.h * 0.55, 0.10); }
     meters::draw_seven_segment(scene, digits, &((level * 100.0) as i32).to_string(), lit.with_alpha(flicker(t, glow)), false);
     scanlines(scene, r, t, 0.12, glow);
     scene.pop_clip();
@@ -583,7 +662,13 @@ pub fn draw_hex_ring(scene: &mut Scene, r: Rect, level: f32, lo: Color, hi: Colo
 pub fn draw_scope(scene: &mut Scene, r: Rect, hist: &[f32], clip: bool, lit: Color, t: f32, glow: bool) {
     let frame = chamfer(r.reduced(1.5, 1.5), 8.0, true);
     scene.fill_poly(frame.clone(), Color(0xff031013), Color(0xff010608));
-    scene.clip_round(r, 0.0);
+    // Keep the contents inside the two cut corners: the frame's box, with one rounded clip for
+    // the top-right corner and one for the bottom-left (each fits within its cut).
+    let fr = r.reduced(1.5, 1.5);
+    let k = 13.6;
+    scene.clip_round(fr, 0.0);
+    scene.clip_round(Rect::new(fr.x - k, fr.y, fr.w + k, fr.h + k), k);
+    scene.clip_round(Rect::new(fr.x, fr.y - k, fr.w + k, fr.h + k), k);
     let grid = lit.with_alpha(0.08);
     let mut x = r.x;
     while x < r.right() { vline(scene, x.trunc(), r.y, r.bottom(), grid, 1.0); x += 14.0; }
@@ -620,10 +705,12 @@ pub fn draw_scope(scene: &mut Scene, r: Rect, hist: &[f32], clip: bool, lit: Col
         let band = Rect::new(bar.x, bar.y, bar.w, 14.0);
         if glow { bloom_rect(scene, band, 0.0, Color(0xffff2a3a), 6.0, 0.25); }
         solid_rect(scene, band, Color(0xaaff2a3a));
-        text_c(scene, band, "! ATTENTION  CLIP", Color(0xffffffff), 9.0);
+        lit_text(scene, band, "! ATTENTION  CLIP", Color(0xffffffff), 9.0, glow);
     }
     scanlines(scene, r, t, 0.2, glow);
     chamfer_glass(scene, r.reduced(1.5, 1.5), 8.0, true);
+    scene.pop_clip();
+    scene.pop_clip();
     scene.pop_clip();
     glow_stroke(scene, &frame, lit.with_alpha(0.8), 1.2, 0.7, glow, true);
 }
@@ -667,35 +754,60 @@ pub fn draw_chassis(scene: &mut Scene, r: Rect, level: f32, body: Color, lit: Co
     segments(scene, &segs, 0.3, t, glow);
     let foot = remove_bottom(&mut s, 13.0);
     let label = Rect::new(foot.x + 8.0, foot.y, foot.w - 8.0, foot.h);
-    text_bloom(scene, label.center(), "OUTPUT  //  LEVEL", lit.with_alpha(0.5), 8.0, glow);
-    text_c(scene, label, "OUTPUT  //  LEVEL", lit.with_alpha(0.8), 8.0);
+    lit_text(scene, label, "OUTPUT  //  LEVEL", lit.with_alpha(0.8), 8.0, glow);
     scanlines(scene, win, t, 0.14, glow);
     window_glass(scene, win, 5.0);
     scene.stroke_round(win.reduced(0.5, 0.5), 4.5, lit.with_alpha(0.22), 1.0);
 }
 
+/// Plain two-row bar meter with no bloom or scanlines: matt lenses in a shallow recess, each
+/// lit one graded with a thin highlight, the peak segment hotter, a printed dB scale below
+/// (dropped when `r` is too low for it).
 pub fn draw_flat_bars(scene: &mut Scene, r: Rect, l: f32, rr: f32, peak_l: f32, peak_r: f32, lo: Color) {
-    solid_round(scene, r, 4.0, Color(0xff0d0f10));
-    let mut b = r.reduced(12.0, 9.0);
-    b.h = (b.h - 10.0).max(0.0);
-    let h = (b.h - 8.0) * 0.5;
+    let lt = Lt::screen();
+    recess(scene, r, 4.0, Color(0xff111416), Color(0xff0a0c0d), lt);
+    let scale = r.h >= 50.0;
+    let pad_y = (r.h * 0.16).clamp(5.0, 9.0);
+    let mut b = r.reduced(12.0, pad_y);
+    if scale { b.h = (b.h - 10.0).max(0.0); }
+    let gap = (b.h * 0.2).clamp(3.0, 8.0);
+    let h = (b.h - gap) * 0.5;
     let n = 30;
     let seg = b.w / n as f32;
+    let rad = (h * 0.12).min(1.0);
     for c in 0..2 {
         let lv = if c == 0 { l } else { rr };
         let pk = if c == 0 { peak_l } else { peak_r };
-        let row = Rect::new(b.x, b.y + c as f32 * (h + 8.0), b.w, h);
+        let row = Rect::new(b.x, b.y + c as f32 * (h + gap), b.w, h);
+        // Channel the lenses sit in.
+        solid_round(scene, row.expanded(1.2), 1.6, Color(0xff040506));
+        hline(scene, row.bottom() + 1.5, row.x, row.right(), Color(0x16ffffff), 0.6);
         for i in 0..n {
             let f = i as f32 / (n - 1) as f32;
             let cc = if f > 0.88 { Color(0xffe5382a) } else if f > 0.70 { Color(0xffe8b923) } else { lo };
-            let on = f <= lv + 0.5 / n as f32 || (f - pk).abs() < 0.5 / n as f32;
-            solid_rect(scene, Rect::new(row.x + i as f32 * seg + 0.6, row.y, seg - 1.2, row.h), if on { cc } else { cc.with_alpha(0.13) });
+            let peak = (f - pk).abs() < 0.5 / n as f32;
+            let on = f <= lv + 0.5 / n as f32 || peak;
+            let cell = Rect::new(row.x + i as f32 * seg + 0.6, row.y, (seg - 1.2).max(0.5), row.h);
+            if on {
+                let cc = if peak { cc.brighter(0.35) } else { cc };
+                scene.fill_round_linear(cell, rad, Stops::new(&[(0.0, cc.brighter(0.30)), (0.25, cc.brighter(0.08)), (1.0, cc.darker(0.24))]), HALF_PI);
+                hline(scene, cell.y + 0.5, cell.x + 0.4, cell.right() - 0.4, Color(0x70ffffff), 0.5);
+            } else {
+                scene.fill_round_linear(cell, rad, Stops::two(cc.darker(0.80), cc.darker(0.88)), HALF_PI);
+                hline(scene, cell.y + 0.5, cell.x + 0.4, cell.right() - 0.4, Color(0x12ffffff), 0.5);
+            }
         }
     }
-    for i in 0..=6 {
-        text_c(scene, box_at(24.0, 9.0, Point::new(b.x + b.w * i as f32 / 6.0, r.bottom() - 9.0)), &(-48 + i * 8).to_string(), Color(0xff8b9498), 7.5);
+    if scale {
+        for i in 0..=6 {
+            let x = b.x + b.w * i as f32 / 6.0;
+            vline(scene, x, b.bottom() + 2.0, b.bottom() + 4.0, Color(0xff8b9498).with_alpha(0.7), 0.6);
+            text_c(scene, box_at(24.0, 9.0, Point::new(x, r.bottom() - pad_y * 0.5 - 2.5)), &(-48 + i * 8).to_string(), Color(0xff9aa3a7), 7.5);
+        }
     }
-    scene.stroke_round(r, 4.0, Color(0xff2a3033), 1.0);
+    recess_shade(scene, r, 4.0, 2.2, lt);
+    scene.stroke_round(r, 4.0, Color(0xe6000000), 1.0);
+    scene.stroke_round(r.reduced(0.5, 0.5), 3.5, Color(0x14ffffff), 0.6);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -728,11 +840,11 @@ pub fn draw_icon_lamp(scene: &mut Scene, r: Rect, icon: Icon, c: Color, on: bool
             lamp_poly(scene, rect_pts(trim_top(a, a.h * 0.2)), c, 1.4, true, on);
             let nub = box_at(a.w * 0.3, a.h * 0.16, Point::new(a.center().x, a.y + a.h * 0.08));
             lamp_poly(scene, rect_pts(nub), c, 1.4, true, on);
-            text_c(scene, trim_top(a, a.h * 0.2), "+", hot, a.h * 0.55);
+            if on { lit_text(scene, trim_top(a, a.h * 0.2), "+", hot, a.h * 0.55, true); } else { text_c(scene, trim_top(a, a.h * 0.2), "+", hot, a.h * 0.55); }
         }
         Icon::Warning => {
             lamp_poly(scene, vec![Point::new(a.center().x, a.y), Point::new(a.right(), a.bottom()), Point::new(a.x, a.bottom())], c, 1.5, true, on);
-            text_c(scene, trim_top(a, a.h * 0.25), "!", hot, a.h * 0.62);
+            if on { lit_text(scene, trim_top(a, a.h * 0.25), "!", hot, a.h * 0.62, true); } else { text_c(scene, trim_top(a, a.h * 0.25), "!", hot, a.h * 0.62); }
         }
         Icon::ArrowLeft | Icon::ArrowRight => {
             let (tip, back) = if icon == Icon::ArrowLeft { (a.x, a.right()) } else { (a.right(), a.x) };
@@ -856,6 +968,10 @@ fn slider_h(scene: &mut Scene, r: Rect, mut prop: f32, st: SliderStyle, c: Color
         }
         SliderStyle::Wedge => {
             let ramp = vec![Point::new(r.x, cy + 7.0), Point::new(r.right(), cy - 11.0), Point::new(r.right(), cy + 7.0)];
+            // A wedge-shaped cut-out: lit lip below and at the tall end, dark floor.
+            let lo = lt.offset(1.1);
+            scene.fill_poly(ramp.iter().map(|p| p.add(lo)).collect(), Color(0x2effffff), Color(0x2effffff));
+            scene.stroke_poly(ramp.clone(), Color(0xe0000000), 2.2, true);
             scene.fill_poly(ramp.clone(), Color(0xff06090b), Color(0xff06090b));
             scene.fill_poly(ramp.clone(), c.with_alpha(0.10), c.with_alpha(0.10));
             let tpos = if r.w.abs() < 1.0e-4 { 0.0 } else { (x - r.x) / r.w };
@@ -866,12 +982,20 @@ fn slider_h(scene: &mut Scene, r: Rect, mut prop: f32, st: SliderStyle, c: Color
                 bloom_rect(scene, Rect::new(r.x, cy + 6.0, x - r.x, 1.0), 0.5, c.mix(Color(0xffff4a2a), 0.5), 4.0, 0.12 * k);
             }
             scene.fill_poly(vec![Point::new(r.x, cy + 7.0), Point::new(x, y_at), Point::new(x, cy + 7.0)], c, Color(0xffff4a2a));
+            // Hotter along the sloping top, shaded along the floor.
+            let drop = (cy + 7.0 - y_at) * 0.45;
+            scene.fill_poly(vec![Point::new(r.x, cy + 7.0), Point::new(x, y_at), Point::new(x, y_at + drop)], Color(0x66ffffff), Color(0x66ffffff));
+            scene.fill_rect(Rect::new(r.x, cy + 4.0, x - r.x, 3.0), Color(0x00000000), Color(0x59000000), true);
             let mut sx = r.x;
             while sx < r.right() {
                 let u = if r.w.abs() < 1.0e-4 { 0.0 } else { (sx - r.x) / r.w };
                 let yt = cy + 7.0 + u * -18.0;
                 vline(scene, sx.trunc(), yt, cy + 7.0, Color(0x70000000), 1.0);
                 sx += 4.0;
+            }
+            // The panel's shadow falls in from the sloping edge.
+            for (k, a) in [(0.7f32, 0.42f32), (1.6, 0.24), (2.6, 0.10)] {
+                scene.line(Point::new(r.x + k * 3.0, cy + 7.0 - k * 0.2 + k), Point::new(r.right(), cy - 11.0 + k), Color(0xff000000).with_alpha(a), 1.0);
             }
             scene.stroke_poly(ramp, c.with_alpha(0.45), 1.0, true);
             if tpos > 0.0 { scene.line(edge[0], edge[1], Color(0xffffffff).with_alpha(0.55), 0.8); }

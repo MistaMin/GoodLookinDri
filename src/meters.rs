@@ -408,26 +408,37 @@ pub fn draw_ppm_lit(scene: &mut Scene, r: Rect, level01: f32, backlight: f32) {
 // LED ladders
 // ---------------------------------------------------------------------------------------------
 
-/// One rectangular LED lens at `brightness` 0..1. Bloom is not drawn; see [`draw_led_bloom`].
+/// One rectangular LED lens at `brightness` 0..1, moulded like a low barrel: a dark pocket
+/// around it, shading toward its ends and lower edge, a specular line along the top shoulder.
+/// Bloom is not drawn; see [`draw_led_bloom`].
 pub fn draw_led(scene: &mut Scene, s: Rect, colour: Color, brightness: f32) {
     let k = lim(brightness, 0.0, 1.0);
     let c = colour.with_alpha(1.0);
-    let rr = (s.w.min(s.h) * 0.18).clamp(0.6, 2.0);
+    let thin = s.w.min(s.h);
+    let rr = (thin * 0.22).clamp(0.6, 2.2);
     let down = std::f32::consts::FRAC_PI_2;
-    // Gap bevel: the pocket's lower lip catches the key.
-    hline(scene, s.bottom() + 0.55, s.x + rr, s.right() - rr, white(0.07), 0.6);
-    // Off: a dull translucent lens, a little light refracted toward the bottom.
-    let off = Stops::new(&[(0.0, c.darker(0.70)), (0.55, c.darker(0.80)), (1.0, c.darker(0.62))]);
+    let shape = Shape::Round(s, rr);
+    // Pocket: a black gap all round (one stroke straddling the edge, drawn first).
+    let g = (thin * 0.10).clamp(0.45, 0.9);
+    scene.stroke_round(s.expanded(g * 0.5), rr + g * 0.5, Color(0xff010202), g + 0.6);
+    // Off: dull translucent plastic, a little room light refracted toward the bottom.
+    let off = Stops::new(&[(0.0, c.darker(0.60)), (0.30, c.darker(0.74)), (0.70, c.darker(0.82)), (0.92, c.darker(0.66)), (1.0, c.darker(0.86))]);
     scene.fill_round_linear(s, rr, off, down);
     if k > 0.0 {
-        let a = k;
-        let on = Stops::new(&[(0.0, c.darker(0.25).with_alpha(a)), (0.22, c.mix(WHITE, 0.16).with_alpha(a)), (0.5, c.with_alpha(a)), (0.85, c.darker(0.2).with_alpha(a)), (1.0, c.darker(0.5).with_alpha(a))]);
+        let on = Stops::new(&[(0.0, c.darker(0.22).with_alpha(k)), (0.20, c.mix(WHITE, 0.30).with_alpha(k)), (0.46, c.mix(WHITE, 0.06).with_alpha(k)), (0.80, c.darker(0.22).with_alpha(k)), (1.0, c.darker(0.58).with_alpha(k))]);
         scene.fill_round_linear(s, rr, on, down);
-        let core = s.reduced(s.w * 0.12, s.h * 0.18);
-        scene.glow_round(core, rr, c.mix(WHITE, 0.25).with_alpha(0.30 * k), core.w.min(core.h) * 0.45, Blend::Add);
+        // The die behind the lens: a hot core that falls off toward the ends.
+        let core = s.reduced(s.w * 0.14, s.h * 0.16);
+        scene.glow_round(core, rr, c.mix(Color(0xfffff6e0), 0.55).with_alpha(0.42 * k), core.w.min(core.h) * 0.48, Blend::Add);
     }
-    // Lens top reflection.
-    hline(scene, s.y + 0.7, s.x + rr, s.right() - rr, white(if k > 0.0 { 0.22 } else { 0.10 }), 0.6);
+    // Barrel ends: the lens curves away along its long axis.
+    let (e0, e1) = (if k > 0.0 { 0.30 } else { 0.42 }, if k > 0.0 { 0.38 } else { 0.50 });
+    let ends = Stops::new(&[(0.0, black(e0)), (0.14, black(0.0)), (0.86, black(0.0)), (1.0, black(e1))]);
+    scene.fill_shape(shape, Paint::Linear { stops: ends, angle: if s.w >= s.h { 0.0 } else { down } }, 0.0, Blend::Over);
+    // Specular line on the top shoulder, and the dark lower edge of the moulding.
+    let sh = (s.h * 0.17).clamp(0.5, 1.6);
+    let spec = Rect::new(s.x + rr * 0.9 + s.w * 0.05, s.y + s.h * 0.13, (s.w - rr * 1.8 - s.w * 0.10).max(0.5), sh);
+    scene.glow_round(spec, sh * 0.5, white(if k > 0.0 { 0.62 } else { 0.24 }), sh * 0.42, Blend::Screen);
 }
 
 /// Additive bloom around a lit LED, light spilling onto what surrounds it.
@@ -435,13 +446,15 @@ pub fn draw_led_bloom(scene: &mut Scene, s: Rect, colour: Color, brightness: f32
     let k = lim(brightness, 0.0, 1.0);
     if k <= 0.0 { return; }
     let e = (s.w.min(s.h) * 0.35).clamp(2.0, 5.0);
-    scene.glow_round(s.expanded(e), 2.0 + e, colour.with_alpha(0.22 * k), e * 1.6, Blend::Add);
+    // A tinted spill that also shows on pale panels, then the additive light.
+    scene.glow_round(s.expanded(e), 2.0 + e, colour.with_alpha(0.10 * k), e * 1.6, Blend::Over);
+    scene.glow_round(s.expanded(e), 2.0 + e, colour.with_alpha(0.20 * k), e * 1.6, Blend::Add);
 }
 
 pub fn draw_led_ladder(scene: &mut Scene, r: Rect, horizontal: bool, level_db: f32, peak_db: f32, segments: i32) {
     let segments = segments.max(1);
-    let gap = 1.5;
     let span = if horizontal { r.w } else { r.h };
+    let gap = (span / segments as f32 * 0.17).clamp(1.5, 3.0);
     let seg_len = (span - gap * (segments - 1) as f32) / segments as f32;
     let peak_idx = (db_position(peak_db, -48.0, 0.0) * (segments - 1) as f32 + 0.5).floor();
     // Recessed channel the lenses sit in.
@@ -488,52 +501,158 @@ pub fn draw_stereo_ladder(scene: &mut Scene, r: Rect, db_l: f32, db_r: f32, peak
     text_c(scene, with_h(with_y(rb, r.bottom() - 11.0), 10.0), "R", ink, 8.0);
 }
 
+/// Dark display window let into the panel: lip shaded by the rig, a graded floor.
+fn screen_window(scene: &mut Scene, r: Rect, radius: f32, top: Color, bottom: Color) {
+    let lip = Stops::new(&[(0.0, black(0.80)), (0.5, black(0.32)), (1.0, white(0.20))]);
+    scene.fill_round_linear(r.expanded(1.1), radius + 1.1, lip, light_angle());
+    scene.fill_round_linear(r, radius, Stops::two(top, bottom), std::f32::consts::FRAC_PI_2);
+}
+/// Glass over a [`screen_window`]: the panel's shadow on the contents, a reflection, a dark edge.
+fn screen_glass(scene: &mut Scene, r: Rect, radius: f32) {
+    let shape = Shape::Round(r, radius);
+    recess_shadow(scene, shape, 3.2, 0.85);
+    let g = Rect::new(r.x + 1.0, r.y + 1.0, (r.w - 2.0).max(0.0), r.h * 0.55);
+    scene.fill_shape(Shape::Round(g, (radius - 1.0).max(0.0)), Paint::Linear { stops: Stops::new(&[(0.0, white(0.11)), (0.4, white(0.035)), (1.0, white(0.0))]), angle: std::f32::consts::FRAC_PI_2 }, 0.0, Blend::Screen);
+    scene.stroke_round(r, radius, black(0.9), 1.0);
+}
+
+/// Arc of LED wedges that grow toward full scale, in a channel cut to their outline.
 pub fn draw_segment_arc(scene: &mut Scene, r: Rect, level01: f32, lit: Color) {
     let n = 32;
     let rad = r.h * 1.05;
     let half = ((r.w * 0.46) / rad).min(0.98).asin();
     let centre = Point::new(r.center().x, r.bottom() + rad * 0.18);
-    for i in 0..n {
+    let at = |a: f32, d: f32| Point::new(centre.x + a.sin() * d, centre.y - a.cos() * d);
+    let (r_in, r_out) = (rad * 0.70, |f: f32| rad * (0.82 + 0.16 * f));
+    let da = half / n as f32;
+    let red = Color(0xffe4412c);
+
+    // Channel: the outline of the whole fan, grown a little, dark with a lit lower lip.
+    let band = |grow: f32| -> Vec<Point> {
+        let m = 24;
+        let (a0, a1) = (-half - grow / rad, half + grow / rad);
+        let mut pts: Vec<Point> = (0..=m).map(|i| { let t = i as f32 / m as f32; at(a0 + (a1 - a0) * t, r_out(t) + grow) }).collect();
+        pts.extend((0..=m).rev().map(|i| at(a0 + (a1 - a0) * i as f32 / m as f32, r_in - grow)));
+        pts
+    };
+    let o = rig().shadow_offset(1.2);
+    scene.fill_poly(band(3.6).iter().map(|p| p.add(o)).collect(), white(0.13), white(0.13));
+    scene.fill_poly(band(3.4), Color(0xff020303), Color(0xff0b0d0e));
+    scene.stroke_poly(band(3.4), black(0.85), 0.8, true);
+
+    let wedge = |i: usize| -> (Vec<Point>, f32) {
         let f = (i as f32 + 0.5) / n as f32;
         let a = (-1.0 + 2.0 * f) * half;
-        let on = f <= level01 + 0.5 / n as f32;
-        let col = if f > 0.86 { Color(0xffe4412c) } else { lit };
-        let dirv = Point::new(a.sin(), -a.cos());
-        let p0 = centre.add(dirv.mul(rad * 0.70));
-        let p1 = centre.add(dirv.mul(rad * (0.82 + 0.16 * f)));
-        let w = r.w / n as f32;
-        if on { scene.line(p0, p1, col.with_alpha(0.25), w * 0.95); }
-        scene.line(p0, p1, if on { col } else { col.with_alpha(0.13) }, w * 0.55);
-    }
-}
-
-pub fn draw_vector_fan(scene: &mut Scene, r: Rect, level01: f32, lit: Color) {
-    scene.fill_round(r, 4.0, Color(0xff031009), Color(0xff031009), true);
-    let b = r.reduced(6.0, 6.0);
-    let n = 26;
+        let w = da * 0.62;
+        (vec![at(a - w, r_in), at(a - w, r_out(f)), at(a + w, r_out(f)), at(a + w, r_in)], f)
+    };
+    let col_at = |f: f32| if f > 0.86 { red } else if f > 0.72 { lit.mix(Color(0xffffc530), 0.75) } else { lit };
+    let on = |f: f32| f <= level01 + 0.5 / n as f32;
+    // Unlit lenses.
     for i in 0..n {
+        let (pts, f) = wedge(i);
+        if on(f) { continue; }
+        let c = col_at(f);
+        scene.fill_poly(pts, c.darker(0.70), c.darker(0.84));
+    }
+    // Bloom under the lit run, then the lenses.
+    for i in 0..n {
+        let (_, f) = wedge(i);
+        if !on(f) { continue; }
+        let a = (-1.0 + 2.0 * f) * half;
+        let mid = at(a, (r_in + r_out(f)) * 0.5);
+        let len = r_out(f) - r_in;
+        scene.glow_ellipse(box_at(len * 0.9 + 8.0, len * 0.9 + 8.0, mid), col_at(f).with_alpha(0.085), len * 0.45 + 4.0, Blend::Add);
+    }
+    for i in 0..n {
+        let (pts, f) = wedge(i);
+        if !on(f) { continue; }
+        let c = col_at(f);
+        let a = (-1.0 + 2.0 * f) * half;
+        scene.fill_poly(pts, c.mix(WHITE, 0.22), c.darker(0.20));
+        // Hot die line down the middle and a specular tick near the outer end.
+        scene.line(at(a, r_in + 1.2), at(a, r_out(f) - 1.2), c.mix(Color(0xfffff6e0), 0.6).with_alpha(0.75), (rad * da * 0.34).max(0.5));
+        scene.line(at(a - da * 0.3, r_out(f) - 1.0), at(a + da * 0.3, r_out(f) - 1.0), white(0.5), 0.6);
+    }
+    for i in 0..n {
+        let (pts, _) = wedge(i);
+        scene.stroke_poly(pts, black(0.55), 0.5, true);
+    }
+}
+
+/// Fan of vector strokes on a phosphor screen behind glass.
+pub fn draw_vector_fan(scene: &mut Scene, r: Rect, level01: f32, lit: Color) {
+    let c = lit.with_alpha(1.0);
+    screen_window(scene, r, 4.0, Color(0xff04120b).mix(c, 0.03), Color(0xff010503));
+    scene.clip_round(r, 4.0);
+    let b = r.reduced(8.0, 8.0);
+    // Phosphor haze low on the screen, a faint graticule.
+    scene.glow_ellipse(Rect::new(b.x - b.w * 0.1, b.y + b.h * 0.35, b.w * 1.2, b.h), c.with_alpha(0.07), b.h * 0.4, Blend::Add);
+    for i in 1..4 {
+        let y = (b.bottom() - b.h * i as f32 / 4.0).round() + 0.25;
+        hline(scene, y, r.x, r.right(), c.with_alpha(0.07), 0.5);
+    }
+    let n = 26;
+    let line = |i: usize| {
         let f = i as f32 / (n - 1) as f32;
-        let x = b.x + f * b.w;
-        let hgt = b.h * (0.28 + 0.72 * f);
-        let on = f <= level01 + 0.5 / n as f32;
-        if on { vline(scene, x, b.bottom(), b.bottom() - hgt, lit.with_alpha(0.25), 3.4); }
-        vline(scene, x, b.bottom(), b.bottom() - hgt, if on { lit.brighter(0.2) } else { lit.with_alpha(0.14) }, 1.2);
+        (b.x + f * b.w, b.h * (0.28 + 0.72 * f), f)
+    };
+    let on = |f: f32| f <= level01 + 0.5 / n as f32;
+    for i in 0..n {
+        let (x, hgt, f) = line(i);
+        if !on(f) { vline(scene, x, b.bottom(), b.bottom() - hgt, c.with_alpha(0.13), 1.1); }
     }
-    scene.stroke_round(r, 4.0, Color(0x22ffffff), 1.0);
+    for i in 0..n {
+        let (x, hgt, f) = line(i);
+        if !on(f) { continue; }
+        let bar = Rect::new(x - 0.6, b.bottom() - hgt, 1.2, hgt);
+        scene.glow_round(bar.expanded(4.5), 5.0, c.with_alpha(0.085), 4.5, Blend::Add);
+        scene.glow_round(bar.expanded(1.6), 2.2, c.with_alpha(0.16), 1.6, Blend::Add);
+    }
+    for i in 0..n {
+        let (x, hgt, f) = line(i);
+        if !on(f) { continue; }
+        let bar = Rect::new(x - 0.65, b.bottom() - hgt, 1.3, hgt);
+        scene.fill_round_linear(bar, 0.65, Stops::new(&[(0.0, c.mix(WHITE, 0.75)), (0.12, c.mix(WHITE, 0.35)), (1.0, c.darker(0.12))]), std::f32::consts::FRAC_PI_2);
+        scene.glow_ellipse(box_at(4.4, 4.4, Point::new(x, b.bottom() - hgt)), c.mix(WHITE, 0.6).with_alpha(0.55), 1.8, Blend::Add);
+    }
+    hline(scene, b.bottom() + 1.5, b.x - 2.0, b.right() + 2.0, c.with_alpha(0.45), 0.7);
+    scene.pop_clip();
+    screen_glass(scene, r, 4.0);
+    scene.stroke_round(r.reduced(0.5, 0.5), 3.5, c.with_alpha(0.16), 1.0);
 }
 
-fn seg_line(s: char, x0: f32, x1: f32, y0: f32, y1: f32, ym: f32, th: f32) -> (Point, Point) {
+/// One segment of a seven-segment digit as a pointed bar (`a`..`g`), slanted like a real display.
+fn seg_poly(s: char, x0: f32, x1: f32, y0: f32, y1: f32, th: f32) -> (Vec<Point>, Point, Point) {
+    let ym = (y0 + y1) * 0.5;
+    let g = th * 0.16;
+    let h = th * 0.5;
+    let skew = |p: Point| Point::new(p.x + (ym - p.y) * 0.09, p.y);
+    let bar = |a: Point, b: Point| -> (Vec<Point>, Point, Point) {
+        let horiz = (a.y - b.y).abs() < 1e-3;
+        let pts = if horiz {
+            vec![Point::new(a.x, a.y), Point::new(a.x + h, a.y - h), Point::new(b.x - h, b.y - h), Point::new(b.x, b.y), Point::new(b.x - h, b.y + h), Point::new(a.x + h, a.y + h)]
+        } else {
+            vec![Point::new(a.x, a.y), Point::new(a.x + h, a.y + h), Point::new(b.x + h, b.y - h), Point::new(b.x, b.y), Point::new(b.x - h, b.y - h), Point::new(a.x - h, a.y + h)]
+        };
+        (pts.into_iter().map(skew).collect(), skew(a), skew(b))
+    };
+    let (xl, xr) = (x0 + h, x1 - h);
+    let (yt, yb) = (y0 + h, y1 - h);
     match s {
-        'a' => (Point::new(x0 + th, y0), Point::new(x1 - th, y0)),
-        'b' => (Point::new(x1, y0 + th), Point::new(x1, ym - th * 0.5)),
-        'c' => (Point::new(x1, ym + th * 0.5), Point::new(x1, y1 - th)),
-        'd' => (Point::new(x0 + th, y1), Point::new(x1 - th, y1)),
-        'e' => (Point::new(x0, ym + th * 0.5), Point::new(x0, y1 - th)),
-        'f' => (Point::new(x0, y0 + th), Point::new(x0, ym - th * 0.5)),
-        _ => (Point::new(x0 + th, ym), Point::new(x1 - th, ym)),
+        'a' => bar(Point::new(xl + g, yt), Point::new(xr - g, yt)),
+        'b' => bar(Point::new(xr, yt + g), Point::new(xr, ym - g)),
+        'c' => bar(Point::new(xr, ym + g), Point::new(xr, yb - g)),
+        'd' => bar(Point::new(xl + g, yb), Point::new(xr - g, yb)),
+        'e' => bar(Point::new(xl, ym + g), Point::new(xl, yb - g)),
+        'f' => bar(Point::new(xl, yt + g), Point::new(xl, ym - g)),
+        _ => bar(Point::new(xl + g, ym), Point::new(xr - g, ym)),
     }
 }
 
+/// Seven-segment readout: pointed, slanted segments with a hot core and additive bloom; with
+/// `background` it sits in a recessed window behind glass and shows the unlit segments as ghosts.
+/// `lit`'s alpha dims the whole display.
 pub fn draw_seven_segment(scene: &mut Scene, r: Rect, text: &str, lit: Color, background: bool) {
     const SEGS: [&str; 10] = ["abcdef", "bc", "abged", "abgcd", "fgbc", "afgcd", "afgedc", "abc", "abcdefg", "abcdfg"];
     let mut cells = String::new();
@@ -545,30 +664,53 @@ pub fn draw_seven_segment(scene: &mut Scene, r: Rect, text: &str, lit: Color, ba
     }
     let n = cells.chars().count();
     if n == 0 { return; }
-    if background { scene.fill_round(r, 3.0, Color(0xff0b0f0c), Color(0xff0b0f0c), true); }
-    let b = r.reduced(r.h * 0.14, r.h * 0.14);
-    let cw = b.w / n as f32;
-    let ch = b.h;
-    let th = (cw * 0.16).min(ch * 0.11);
-    for (i, c) in cells.chars().enumerate() {
-        let x0 = b.x + i as f32 * cw + cw * 0.12;
-        let x1 = b.x + (i + 1) as f32 * cw - cw * 0.12;
-        let y0 = b.y;
-        let y1 = b.bottom();
-        let ym = (y0 + y1) * 0.5;
-        let on = if c.is_ascii_digit() { SEGS[c as usize - '0' as usize] } else if c == '-' || c == '+' { "g" } else { "" };
-        for s in ['a', 'b', 'c', 'd', 'e', 'f', 'g'] {
-            let is_on = on.contains(s);
-            if !is_on && !background { continue; }
-            let (a, bpt) = seg_line(s, x0, x1, y0, y1, ym, th);
-            if is_on { scene.line(a, bpt, lit.with_alpha(0.22), th * 2.4); }
-            scene.line(a, bpt, if is_on { lit } else { lit.with_alpha(0.07) }, th);
-        }
-        if dots[i] {
-            scene.fill_ellipse_solid(Rect::new(x1 + th * 0.2 - th, y1 - th, th * 2.0, th * 2.0), lit.with_alpha(0.22));
-            scene.fill_ellipse_solid(Rect::new(x1 + th * 0.2 - th * 0.6, y1 - th * 0.6, th * 1.2, th * 1.2), lit);
-        }
+    let dim = lit.alpha_f();
+    let c = lit.with_alpha(1.0);
+    if background {
+        screen_window(scene, r, 3.0, Color(0xff0c0a08).mix(c, 0.035), Color(0xff040303));
+        scene.glow_ellipse(r.reduced(r.w * 0.06, r.h * 0.12), c.with_alpha(0.05 * dim), r.h * 0.35, Blend::Add);
     }
+    let b = r.reduced(r.h * 0.16, r.h * 0.16);
+    // Digits keep a display's proportions (pitch no more than 0.8 of the height) and the group
+    // is centred.
+    let ch = b.h;
+    let cw = (b.w / n as f32).min(ch * 0.88);
+    let b = Rect::new(b.center().x - cw * n as f32 * 0.5, b.y, cw * n as f32, b.h);
+    let th = (cw * 0.17).min(ch * 0.115).max(0.8);
+    let mut on_segs: Vec<(Vec<Point>, Point, Point)> = Vec::new();
+    let mut dot_at = Vec::new();
+    for (i, cc) in cells.chars().enumerate() {
+        let dw = cw * 0.76;
+        let xc = b.x + (i as f32 + 0.5) * cw;
+        let (x0, x1) = (xc - dw * 0.5, xc + dw * 0.5);
+        let on = if cc.is_ascii_digit() { SEGS[cc as usize - '0' as usize] } else if cc == '-' || cc == '+' { "g" } else { "" };
+        for s in ['a', 'b', 'c', 'd', 'e', 'f', 'g'] {
+            let seg = seg_poly(s, x0, x1, b.y, b.bottom(), th);
+            if on.contains(s) { on_segs.push(seg); } else if background { scene.fill_poly(seg.0, c.with_alpha(0.07 * dim), c.with_alpha(0.07 * dim)); }
+        }
+        let dp = Point::new(x1 + th * 0.75 - ch * 0.045, b.bottom() - th * 0.5);
+        if dots[i] { dot_at.push(dp); } else if background { scene.fill_ellipse_solid(box_at(th, th, dp), c.with_alpha(0.07 * dim)); }
+    }
+    // Bloom for every lit segment first, so no halo lies over a neighbour's core.
+    let halo = (th * 2.2).clamp(1.6, 7.0);
+    for (_, a, e) in &on_segs {
+        let bb = Rect::new(a.x.min(e.x), a.y.min(e.y), (a.x - e.x).abs(), (a.y - e.y).abs());
+        scene.glow_round(bb.expanded(halo + th * 0.3), halo + th * 0.3, c.with_alpha(0.15 * dim), halo, Blend::Add);
+        scene.glow_round(bb.expanded(th * 1.1), th * 1.1, c.with_alpha(0.20 * dim), th * 0.9, Blend::Add);
+    }
+    for p in &dot_at { scene.glow_ellipse(box_at(th * 4.6, th * 4.6, *p), c.with_alpha(0.30 * dim), th * 1.8, Blend::Add); }
+    let core = c.mix(Color(0xfffff4e0), 0.62);
+    for (pts, a, e) in on_segs {
+        scene.fill_poly(pts, c.mix(WHITE, 0.16).with_alpha(dim), c.darker(0.10).with_alpha(dim));
+        let d = e.sub(a);
+        let inset = th * 0.45 / (d.x * d.x + d.y * d.y).sqrt().max(1e-3);
+        scene.line(a.add(d.mul(inset)), e.sub(d.mul(inset)), core.with_alpha(0.80 * dim), (th * 0.32).max(0.45));
+    }
+    for p in dot_at {
+        scene.fill_ellipse_solid(box_at(th * 1.15, th * 1.15, p), c.mix(WHITE, 0.16).with_alpha(dim));
+        scene.fill_ellipse_solid(box_at(th * 0.5, th * 0.5, p), core.with_alpha(0.8 * dim));
+    }
+    if background { screen_glass(scene, r, 3.0); }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -596,6 +738,8 @@ pub fn draw_jewel(scene: &mut Scene, c: Point, radius: f32, colour: Color, brigh
     let r = radius.max(1.0);
     // Light spilling onto the panel around the fitting.
     if k > 0.0 {
+        // The tinted spill shows on pale panels too, where added light alone washes out.
+        scene.glow_ellipse(ellipse_c(c, r * 3.2, r * 3.2), col.with_alpha(0.16 * k), r * 2.3, Blend::Over);
         scene.glow_ellipse(ellipse_c(c, r * 3.6, r * 3.6), col.with_alpha(0.16 * k), r * 2.8, Blend::Screen);
     }
     let ring = if bezel == LampBezel::Flush { r * 1.08 } else { r * 1.38 };
@@ -705,6 +849,7 @@ pub fn draw_lit_key(scene: &mut Scene, r: Rect, text: &str, lit: bool, lamp: Col
     let ink = if lit { lamp.darker(0.78) } else { Color(0xffe2e6e3).with_alpha(0.85) };
     text_c(scene, face, text, ink, face.h * 0.40);
     if lit {
+        scene.glow_round(face.expanded(5.0), fr + 5.0, lamp.with_alpha(0.10), 7.0, Blend::Over);
         scene.glow_round(face.expanded(5.0), fr + 5.0, lamp.with_alpha(0.22), 7.0, Blend::Add);
     }
 }
@@ -724,6 +869,13 @@ pub fn draw_slot_fader(scene: &mut Scene, r: Rect, prop01: f32, cap: FaderCap, c
 /// Fader with an explicit orientation. `prop01` 1 is the top (vertical) or the right end.
 /// `scale` prints ticks on both sides of the slot with numerals on the left (or above).
 pub fn draw_fader(scene: &mut Scene, r: Rect, prop01: f32, cap: FaderCap, cap_colour: Color, vertical: bool, scale: bool) {
+    draw_fader_on(scene, r, prop01, cap, cap_colour, vertical, scale, Color(0xff14181b));
+}
+
+/// [`draw_fader`] on a panel of colour `panel`: the scale is printed in dark ink on a pale
+/// panel and pale ink on a dark one, and the slot's lit lip is toned to match.
+pub fn draw_fader_on(scene: &mut Scene, r: Rect, prop01: f32, cap: FaderCap, cap_colour: Color, vertical: bool, scale: bool, panel: Color) {
+    let pale = panel.perceived_brightness() > 0.5;
     let (len, wid) = if vertical { (r.h, r.w) } else { (r.w, r.h) };
     // Along / across → screen rect.
     let rect = |a0: f32, c0: f32, la: f32, lc: f32| if vertical { Rect::new(r.x + c0, r.y + a0, lc, la) } else { Rect::new(r.x + a0, r.y + c0, la, lc) };
@@ -741,22 +893,24 @@ pub fn draw_fader(scene: &mut Scene, r: Rect, prop01: f32, cap: FaderCap, cap_co
     let sw = (wid * 0.16).clamp(3.0, 6.0);
     let slot = rect(t0 - sw * 0.5, mid - sw * 0.5, (t1 - t0) + sw, sw);
     let sr = sw * 0.5;
-    scene.stroke_round(slot.translated(0.4, 0.8), sr, white(0.26), 0.9);
+    scene.stroke_round(slot.translated(0.4, 0.8), sr, white(if pale { 0.75 } else { 0.26 }), 0.9);
+    if pale { scene.stroke_round(slot.translated(-0.3, -0.6), sr, black(0.30), 0.8); }
     scene.fill_round(slot, sr, Color(0xff030404), Color(0xff030404), true);
     recess_shadow(scene, Shape::Round(slot, sr), 2.5, 0.9);
     let rail_a = if vertical { (slot.x + slot.w * 0.5, slot.y + sr, slot.x + slot.w * 0.5, slot.bottom() - sr) } else { (slot.x + sr, slot.y + slot.h * 0.5, slot.right() - sr, slot.y + slot.h * 0.5) };
     scene.line(Point::new(rail_a.0, rail_a.1), Point::new(rail_a.2, rail_a.3), white(0.06), 0.7);
 
     if scale {
-        let ink = Color(0xffb8c0c4).with_alpha(0.8);
+        let ink = if pale { Color(0xff16191b).with_alpha(0.88) } else { Color(0xffd3dade).with_alpha(0.86) };
+        let tw = if pale { 0.8 } else { 0.75 };
         let g = sw * 0.5 + wid * 0.06;
         let (maj, min) = (wid * 0.15, wid * 0.08);
         let ns = (wid * 0.19).clamp(5.0, 8.0);
         for i in 0..=10 {
             let a = along(i as f32 / 10.0);
             let l = if i % 2 == 0 { maj } else { min };
-            scene.line(pnt(a, mid + g), pnt(a, mid + g + l), ink, 0.7);
-            scene.line(pnt(a, mid - g), pnt(a, mid - g - l), ink, 0.7);
+            scene.line(pnt(a, mid + g), pnt(a, mid + g + l), ink, tw);
+            scene.line(pnt(a, mid - g), pnt(a, mid - g - l), ink, tw);
             if i % 2 == 0 && wid >= 20.0 {
                 scene.text(pnt(a, mid - g - maj - ns * 0.62), &i.to_string(), ink, ns, true);
             }
