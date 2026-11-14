@@ -1,4 +1,4 @@
-//! Proof that a GoodLookinDri scene can be drawn and driven in a window.
+//! Proof that a GoodLookin DRI scene can be drawn and driven in a window.
 //!
 //! `gldri-hello`                  opens the window
 //! `gldri-hello --smoke [ms]`     opens it, draws, and exits 0 after `ms` (default 800) if the frame is not blank
@@ -100,7 +100,7 @@ fn main() {
         }
         other => {
             let smoke_ms = if other == Some("--smoke") { Some(args.get(1).and_then(|s| s.parse().ok()).unwrap_or(800)) } else { None };
-            run(Config { title: "GoodLookinDri shell".into(), width: W, height: H, smoke_ms }, Box::new(Hello::new()))
+            run(Config { title: "GoodLookin DRI shell".into(), width: W, height: H, smoke_ms }, Box::new(Hello::new()))
         }
     };
     std::process::exit(code);

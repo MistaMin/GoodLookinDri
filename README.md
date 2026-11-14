@@ -1,10 +1,10 @@
-# GoodLookinDri
+# GoodLookin DRI
 
-GoodLookinDri, the Drawn Rust Interface.
+GoodLookin DRI, the Design Rust Interface.
 
 Knobs, plates, meters and switches are drawn in code from a design file, with no bitmaps and no GUI framework, for Rust audio plugins and tools. It contains no plugin: plugins live in their own repositories and draw with whatever window and plugin format they already use.
 
-Dri is said like "dry". GoodLookinDri is the Rust companion to [GoodLookinUI](https://github.com/MistaMin/GoodLookinUI). Both speak the same design files, the same knob and plate names, and the same spectrum and meter behaviour. GoodLookinUI paints with its C++ adapter. GoodLookinDri records the same parts as drawing commands so a Rust host can replay them.
+GoodLookin DRI is the Rust companion to [GoodLookinUI](https://github.com/MistaMin/GoodLookinUI). Both speak the same design files, the same knob and plate names, and the same spectrum and meter behaviour. GoodLookinUI paints with its C++ adapter. GoodLookin DRI records the same parts as drawing commands so a Rust host can replay them.
 
 This is an early implementation, not a finished framework.
 
@@ -127,7 +127,7 @@ Existing CSV designs with the original HardwareUI header still load. Newly saved
 
 ## License
 
-GoodLookinDri source code and documentation are released under the [MIT License](LICENSE), copyright 2026 Marcos Quirino Deida.
+GoodLookin DRI source code and documentation are released under the [MIT License](LICENSE), copyright 2026 Marcos Quirino Deida.
 
 ## Recent plugin UI additions
 

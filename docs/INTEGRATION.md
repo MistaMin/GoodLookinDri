@@ -1,6 +1,6 @@
 # Integration guide
 
-GoodLookinDri is a library. The plugin owns the window, the audio device callbacks, the parameter table, and the format wrapper. This crate owns the design file, the display motion, the analysis used by meters and the spectrum, and the list of drawing commands.
+GoodLookin DRI is a library. The plugin owns the window, the audio device callbacks, the parameter table, and the format wrapper. This crate owns the design file, the display motion, the analysis used by meters and the spectrum, and the list of drawing commands.
 
 ## Add the crate
 

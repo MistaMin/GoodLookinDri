@@ -13,7 +13,7 @@ Reviewed the latest local commits in the OpenGrid plugin repositories. This is a
 
 ## Matching APIs
 
-| Feature | GoodLookinDri | GoodLookinUI |
+| Feature | GoodLookin DRI | GoodLookinUI |
 | --- | --- | --- |
 | Readout window | `readout::ReadoutWindow` | `<goodlookinui/ReadoutWindow.h>` |
 | Card layout | `layout::readout_card` | `layout::readoutCard` in `<goodlookinui/Layout.h>` |

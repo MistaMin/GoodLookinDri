@@ -1,4 +1,4 @@
-//! GoodLookinDri — Rust toolkit for generated plugin interfaces.
+//! GoodLookin DRI — Rust toolkit for generated plugin interfaces.
 //!
 //! The design model, CSV, motion, level tap, look table, settings and spectrum match
 //! [GoodLookinUI](https://github.com/MistaMin/GoodLookinUI). Drawing is a [`scene::Scene`]

@@ -1,6 +1,6 @@
 # goodlookindri-shell
 
-Window, input, outline text and a software rasteriser for GoodLookinDri scenes. A tool that is
+Window, input, outline text and a software rasteriser for GoodLookin DRI scenes. A tool that is
 not a plugin (a manager, an installer, a standalone utility) uses it to show a `Scene` on screen
 and to hold a few controls.
 

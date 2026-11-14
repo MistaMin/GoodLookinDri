@@ -2,7 +2,7 @@
 //! wrapped text block and a seven-segment readout.
 //!
 //! A [`Ui`] owns the widgets, routes [`Event`]s to them, keeps focus, hover and press state, and
-//! reports what the user did as an [`Action`]. Each widget paints with GoodLookinDri parts, so it
+//! reports what the user did as an [`Action`]. Each widget paints with GoodLookin DRI parts, so it
 //! matches the knobs and plates. Coordinates are logical points, the same as the `Scene`.
 
 use crate::core::{Event, Key};

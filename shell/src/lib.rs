@@ -1,4 +1,4 @@
-//! Host framework for GoodLookinDri: opens a window, replays [`goodlookindri::scene::Scene`]
+//! Host framework for GoodLookin DRI: opens a window, replays [`goodlookindri::scene::Scene`]
 //! with a software rasteriser, and delivers mouse input.
 //!
 //! No GPU API is used. Windows draws with GDI (Windows 7 to 11), macOS with Cocoa and

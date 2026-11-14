@@ -133,7 +133,7 @@ fn main() {
         }
         other => {
             let smoke_ms = if other == Some("--smoke") { Some(args.get(1).and_then(|s| s.parse().ok()).unwrap_or(800)) } else { None };
-            run(Config { title: "GoodLookinDri widgets".into(), width: W, height: H, smoke_ms }, Box::new(Demo::new()))
+            run(Config { title: "GoodLookin DRI widgets".into(), width: W, height: H, smoke_ms }, Box::new(Demo::new()))
         }
     };
     std::process::exit(code);

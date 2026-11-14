@@ -1,4 +1,4 @@
-//! Host-owned drawing list. GoodLookinDri never opens a window or touches audio parameters.
+//! Host-owned drawing list. GoodLookin DRI never opens a window or touches audio parameters.
 //! A plugin (Water Channel, an EQ, nih-plug, iced, egui, Cairo) replays [`Cmd`] on its GUI thread.
 //!
 //! Water Channel's C++ canvas only had five primitives and rejected every style except Brit.
